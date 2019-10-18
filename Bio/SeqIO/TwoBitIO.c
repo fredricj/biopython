@@ -274,24 +274,30 @@ static char* unpack(FILE* ptr, uint32_t start, uint32_t end) {
     const uint32_t byteEnd = (end + 3) / 4;
     const uint32_t byteSize = byteEnd - byteStart;
     unsigned char* bytes = malloc(byteSize*sizeof(unsigned char));
-    unsigned char* p = bytes;
     char* sequence = malloc((size+1)*sizeof(char));
-    char* s = sequence;
-    if (byteStart == byteEnd) {
-        /* special handling needed */
-        return NULL;
-    }
     fseek(ptr, byteStart, SEEK_CUR);
     fread(bytes, 1, byteSize, ptr);
     start -= byteStart * 4;
-    memcpy(s, &(bases[*p][byteStart]), 4-start);
-    p++;
-    s += (4 - start);
-    for (i = byteStart+1; i < byteEnd-1; i++, p++, s += 4)
-        memcpy(s, bases[*p], 4);
-    memcpy(s, bases[*p], end - 4 * (byteEnd-1));
-    free(bytes);
+    if (byteStart + 1 == byteEnd) {
+        /* one byte only */
+        memcpy(sequence, &(bases[*bytes][start]), size);
+    }
+    else {
+        end -= byteEnd * 4;
+        /* end is now a negative number equal to the distance to the byte end */
+        memcpy(sequence, &(bases[*bytes][start]), 4 - start);
+        bytes++;
+        sequence += (4 - start);
+        for (i = byteStart+1; i < byteEnd-1; i++, bytes++, sequence += 4)
+            memcpy(sequence, bases[*bytes], 4);
+        memcpy(sequence, bases[*bytes], end + 4);
+        bytes++;
+        bytes -= byteSize;
+        sequence += (end + 4);
+        sequence -= size;
+    }
     sequence[size] = '\0';
+    free(bytes);
     return sequence;
 }
 
