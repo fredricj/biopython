@@ -26,7 +26,9 @@ def perform_test(length=50, start=0, end=None, n=10):
     SeqIO.write(records, handle, 'fasta')
     handle.close()
     os.system("faToTwoBit test.fa test.2bit")
-    sequences = twoBitIO.perform("test.2bit", start, end)
+    handle = open("test.2bit")
+    sequences = twoBitIO.perform(handle, start, end)
+    handle.close()
     for sequence, record in zip(sequences, records):
         assert sequence == record.seq[start:end]
 

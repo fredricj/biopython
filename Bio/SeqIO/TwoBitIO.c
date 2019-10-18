@@ -269,7 +269,105 @@ static const char bases[][4] = {"TTTT",  /* 00 00 00 00 */
                                 "GGGG",  /* 11 11 11 11 */
                                };
 
-static char* unpack(FILE* ptr, uint32_t start, uint32_t end) {
+static int
+read_uint8(int fd, uint8_t* pointer, const char variable[])
+{
+    const ssize_t n = read(fd, pointer, 1);
+    switch (n) {
+        case 1:
+            return 1;
+        case 0:
+            PyErr_Format(PyExc_RuntimeError,
+                         "unexpected end of file while attempting to read %s",
+                         variable);
+            return 0;
+        case -1:
+            PyErr_Format(PyExc_RuntimeError,
+                         "error occurred trying to read %s (errno = %d)",
+                         variable, errno);
+            return 0;
+        default:
+            PyErr_Format(PyExc_RuntimeError,
+                         "unexpected error occurred while attempting to read %s",
+                         variable);
+            return 0;
+    }
+}
+
+static int
+read_uint32(int fd, uint32_t* pointer, const char variable[])
+{
+    const ssize_t n = read(fd, pointer, 4);
+    switch (n) {
+        case 4:
+            return 1;
+        case 0:
+            PyErr_Format(PyExc_RuntimeError,
+                         "unexpected end of file while attempting to read %s",
+                         variable);
+            return 0;
+        case -1:
+            PyErr_Format(PyExc_RuntimeError,
+                         "error occurred trying to read %s (errno = %d)",
+                         variable, errno);
+            return 0;
+        default:
+            PyErr_Format(PyExc_RuntimeError,
+                         "insufficient data while attempting to read %s",
+                         variable);
+            return 0;
+    }
+}
+
+static int
+read_string(int fd, char* pointer, uint8_t size, const char variable[])
+{
+    const ssize_t n = read(fd, pointer, size);
+    if (n == size) return 1;
+    switch (n) {
+        case 0:
+            PyErr_Format(PyExc_RuntimeError,
+                         "unexpected end of file while attempting to read %s",
+                         variable);
+            return 0;
+        case -1:
+            PyErr_Format(PyExc_RuntimeError,
+                         "error occurred trying to read %s (errno = %d)",
+                         variable, errno);
+            return 0;
+        default:
+            PyErr_Format(PyExc_RuntimeError,
+                         "insufficient data while attempting to read %s",
+                         variable);
+            return 0;
+    }
+}
+
+static int
+read_data(int fd, unsigned char* pointer, uint32_t size, const char variable[])
+{
+    const ssize_t n = read(fd, pointer, size);
+    if (n == size) return 1;
+    switch (n) {
+        case 0:
+            PyErr_Format(PyExc_RuntimeError,
+                         "unexpected end of file while attempting to read %s",
+                         variable);
+            return 0;
+        case -1:
+            PyErr_Format(PyExc_RuntimeError,
+                         "error occurred trying to read %s (errno = %d)",
+                         variable, errno);
+            return 0;
+        default:
+            PyErr_Format(PyExc_RuntimeError,
+                         "insufficient data while attempting to read %s",
+                         variable);
+            return 0;
+    }
+}
+
+static char* unpack(int fd, uint32_t start, uint32_t end) {
     uint32_t i;
     const uint32_t size = end - start;
     const uint32_t byteStart = start / 4;
@@ -277,8 +375,11 @@ static char* unpack(FILE* ptr, uint32_t start, uint32_t end) {
     const uint32_t byteSize = byteEnd - byteStart;
     unsigned char* bytes = malloc(byteSize*sizeof(unsigned char));
     char* sequence = malloc((size+1)*sizeof(char));
-    fseek(ptr, byteStart, SEEK_CUR);
-    fread(bytes, 1, byteSize, ptr);
+    if (lseek(fd, byteStart, SEEK_CUR) == -1) {
+        PyErr_SetString(PyExc_RuntimeError, "failed to seek in sequence");
+        return NULL;
+    }
+    if (!read_data(fd, bytes, byteSize, "sequence data")) return NULL;
     start -= byteStart * 4;
     if (byteStart + 1 == byteEnd) {
         /* one byte only */
@@ -336,15 +437,19 @@ applyMask(char sequence[], uint32_t start, uint32_t end,
     }
 }
 
+/* kcluster */
+static char perform__doc__[] = "Perform test";
+
 static PyObject*
-do_perform(const char filename[], uint32_t start, uint32_t end)
+perform(PyObject* self, PyObject* args, PyObject* keywords)
 {
+    uint32_t start;
+    uint32_t end;
     int isByteSwapped = 0;
-    int32_t signature;
-    int32_t version;
+    uint32_t signature;
+    uint32_t version;
     uint32_t sequenceCount;
     uint32_t reserved;
-    FILE *ptr;
     uint32_t i, j;
     uint8_t nameSize;
     char name[256];
@@ -360,73 +465,97 @@ do_perform(const char filename[], uint32_t start, uint32_t end)
     char* sequence;
     PyObject* s;
     PyObject* tuple;
-    ptr = fopen(filename, "rt");  /* r for read, b for binary */
-    fread(&signature, 4, 1, ptr);
+    PyObject* fileobj;
+    int fd;
+
+    static char* kwlist[] = {"handle",
+                             "start",
+                             "end",
+                              NULL};
+
+    if (!PyArg_ParseTupleAndKeywords(args, keywords, "OII", kwlist,
+                                     &fileobj, &start, &end)) return NULL;
+
+    fd = PyObject_AsFileDescriptor(fileobj);
+    if (fd == -1) return NULL;
+
+    if (!read_uint32(fd, &signature, "signature")) return NULL;
     switch (signature) {
         case 0x1A412743: break;
         case 0x4327411a: isByteSwapped = 1; break;
         default:
-            printf("Unknown signature %X\n", signature);
-            fclose(ptr);
+            PyErr_Format(PyExc_RuntimeError,
+                         "Unknown signature %X", signature);
             return 0;
     }
-    fread(&version, 4, 1, ptr);
+    if (!read_uint32(fd, &version, "version")) return NULL;
     if (version != 0) {
-        printf("Found non-zero file version %u; aborting\n", version);
+        PyErr_Format(PyExc_RuntimeError,
+                     "Found non-zero file version %u; aborting", version);
         return 0;
     }
-    fread(&sequenceCount, 4, 1, ptr);
+    if (!read_uint32(fd, &sequenceCount, "sequenceCount")) return NULL;
     if (isByteSwapped) BYTESWAP(sequenceCount);
-    offsets = malloc(sequenceCount*sizeof(uint32_t));
-    fread(&reserved, 4, 1, ptr);
+    if (!read_uint32(fd, &reserved, "reserved field")) return NULL;
     if (reserved != 0) {
-        printf("Found non-zero reserved field %u; aborting\n", reserved);
-        free(offsets);
-        fclose(ptr);
+        PyErr_SetString(PyExc_RuntimeError,
+                        "Found non-zero reserved field; aborting");
         return 0;
     }
+    offsets = malloc(sequenceCount*sizeof(uint32_t));
     for (i = 0; i < sequenceCount; i++) {
-        fread(&nameSize, 1, 1, ptr);
-        fread(name, nameSize, 1, ptr);
-        /* nameSize <= 255 */
-        name[nameSize] = '\0';
-        fread(&offset, 4, 1, ptr);
+        if (!read_uint8(fd, &nameSize, "nameSize")) return NULL;
+        if (!read_string(fd, name, nameSize, "name")) return NULL;
+        if (!read_uint32(fd, &offset, "offset")) return NULL;
         if (isByteSwapped) BYTESWAP(offset);
+        name[nameSize] = '\0';  /* nameSize <= 255 */
         offsets[i] = offset;
     }
     tuple = PyTuple_New(sequenceCount);
     for (i = 0; i < sequenceCount; i++) {
-        fseek(ptr, offsets[i], SEEK_SET);
-        fread(&dnaSize, 4, 1, ptr);
+        if (lseek(fd, offsets[i], SEEK_SET) == -1) {
+            PyErr_SetString(PyExc_RuntimeError, "failed to seek in file");
+            return NULL;
+        }
+        if (!read_uint32(fd, &dnaSize, "dnaSize")) return NULL;
         if (isByteSwapped) BYTESWAP(dnaSize);
-        fread(&nBlockCount, 4, 1, ptr);
+        if (!read_uint32(fd, &nBlockCount, "nBlockCount")) return NULL;
         if (isByteSwapped) BYTESWAP(nBlockCount);
         nBlockStarts = malloc(nBlockCount*sizeof(uint32_t));
         nBlockSizes = malloc(nBlockCount*sizeof(uint32_t));
-        fread(nBlockStarts, 4, nBlockCount, ptr);
-        fread(nBlockSizes, 4, nBlockCount, ptr);
-        if (isByteSwapped) {
-            for (j = 0; j < nBlockCount; j++) {
-                BYTESWAP(nBlockStarts[j]);
-                BYTESWAP(nBlockSizes[j]);
-            }
+        for (j = 0; j < nBlockCount; j++) {
+            uint32_t nBlockStart;
+            if (!read_uint32(fd, &nBlockStart, "nBlockStarts")) return NULL;
+            if (isByteSwapped) BYTESWAP(nBlockStart);
+            nBlockStarts[j] = nBlockStart;
         }
-        fread(&maskBlockCount, 4, 1, ptr);
+        for (j = 0; j < nBlockCount; j++) {
+            uint32_t nBlockSize;
+            if (!read_uint32(fd, &nBlockSize, "nBlockSizes")) return NULL;
+            if (isByteSwapped) BYTESWAP(nBlockSize);
+            nBlockSizes[j] = nBlockSize;
+        }
+        if (!read_uint32(fd, &maskBlockCount, "maskBlockCount")) return NULL;
         if (isByteSwapped) BYTESWAP(maskBlockCount);
         maskBlockStarts = malloc(maskBlockCount*sizeof(uint32_t));
         maskBlockSizes = malloc(maskBlockCount*sizeof(uint32_t));
-        fread(maskBlockStarts, 4, maskBlockCount, ptr);
-        fread(maskBlockSizes, 4, maskBlockCount, ptr);
-        if (isByteSwapped) {
-            for (j = 0; j < maskBlockCount; j++) {
-                BYTESWAP(maskBlockStarts[j]);
-                BYTESWAP(maskBlockSizes[j]);
-            }
+        for (j = 0; j < maskBlockCount; j++) {
+            uint32_t maskBlockStart;
+            if (!read_uint32(fd, &maskBlockStart, "maskBlockStarts")) return NULL;
+            if (isByteSwapped) BYTESWAP(maskBlockStart);
+            maskBlockStarts[j] = maskBlockStart;
         }
-        fread(&reserved, 4, 1, ptr);
+        for (j = 0; j < maskBlockCount; j++) {
+            uint32_t maskBlockSize;
+            if (!read_uint32(fd, &maskBlockSize, "maskBlockSizes")) return NULL;
+            if (isByteSwapped) BYTESWAP(maskBlockSize);
+            maskBlockSizes[j] = maskBlockSize;
+        }
+        if (!read_uint32(fd, &reserved, "reserved")) return NULL;
         if (reserved != 0) {
-            printf("Found non-zero reserved field %u in sequence record %i; aborting\n", reserved, i);
-            fclose(ptr);
+            PyErr_Format(PyExc_RuntimeError,
+                         "Found non-zero reserved field %u in sequence "
+                         "record %i; aborting\n", reserved, i);
             free(nBlockStarts);
             free(nBlockSizes);
             free(maskBlockStarts);
@@ -434,7 +563,7 @@ do_perform(const char filename[], uint32_t start, uint32_t end)
             free(offsets);
             return 0;
         }
-        sequence = unpack(ptr, start, end);
+        sequence = unpack(fd, start, end);
         applyNs(sequence, start, end, nBlockCount, nBlockStarts, nBlockSizes);
         applyMask(sequence, start, end,
                   maskBlockCount, maskBlockStarts, maskBlockSizes);
@@ -447,28 +576,7 @@ do_perform(const char filename[], uint32_t start, uint32_t end)
         free(maskBlockSizes);
     }
     free(offsets);
-    fclose(ptr);
     return tuple;
-}
-
-
-/* kcluster */
-static char perform__doc__[] = "Perform test";
-
-static PyObject*
-perform(PyObject* self, PyObject* args, PyObject* keywords)
-{
-    const char* filename;
-    unsigned int start;
-    unsigned int end;
-    static char* kwlist[] = {"filename",
-                             "start",
-                             "end",
-                              NULL};
-
-    if (!PyArg_ParseTupleAndKeywords(args, keywords, "sII", kwlist,
-                                     &filename, &start, &end)) return NULL;
-    return do_perform(filename, start, end);
 }
 
 static struct PyMethodDef twoBitIO_methods[] = {
