@@ -267,20 +267,65 @@ static const char bases[][4] = {"TTTT",  /* 00 00 00 00 */
                                 "GGGG",  /* 11 11 11 11 */
                                };
 
-static char* unpack(unsigned int dnaSize, FILE* ptr) {
-    size_t i;
-    const size_t n = dnaSize / 4;
-    const size_t start = 0;
-    const size_t end = dnaSize;
-    unsigned char* packedDna = malloc(n*sizeof(unsigned char));
-    unsigned char* p = packedDna;
-    char* sequence = malloc(dnaSize*sizeof(char));
+static char* unpack(FILE* ptr, uint32_t start, uint32_t end) {
+    uint32_t i;
+    const uint32_t size = end - start;
+    const uint32_t byteStart = start / 4;
+    const uint32_t byteEnd = (end + 3) / 4;
+    const uint32_t byteSize = byteEnd - byteStart;
+    unsigned char* bytes = malloc(byteSize*sizeof(unsigned char));
+    unsigned char* p = bytes;
+    char* sequence = malloc((size+1)*sizeof(char));
     char* s = sequence;
-    fread(p, 1, (dnaSize + 3) / 4, ptr);
-    for (i = 0; i < n; i++, p++, s += 4) memcpy(s, bases[*p], 4);
-    memcpy(s, bases[*p], dnaSize - 4*n);
-    free(packedDna);
+    if (byteStart == byteEnd) {
+        /* special handling needed */
+        return NULL;
+    }
+    fseek(ptr, byteStart, SEEK_CUR);
+    fread(bytes, 1, byteSize, ptr);
+    start -= byteStart * 4;
+    memcpy(s, &(bases[*p][byteStart]), 4-start);
+    p++;
+    s += (4 - start);
+    for (i = byteStart+1; i < byteEnd-1; i++, p++, s += 4)
+        memcpy(s, bases[*p], 4);
+    memcpy(s, bases[*p], end - 4 * (byteEnd-1));
+    free(bytes);
+    sequence[size] = '\0';
     return sequence;
+}
+
+static void
+applyNs(char sequence[], uint32_t start, uint32_t end,
+        uint32_t nBlockCount, uint32_t nBlockStarts[], uint32_t nBlockSizes[])
+{
+    uint32_t i;
+    for (i = 0; i < nBlockCount; i++) {
+        uint32_t nBlockStart = nBlockStarts[i];
+        uint32_t nBlockEnd = nBlockStart + nBlockSizes[i];
+        if (nBlockEnd < start) continue;
+        if (end < nBlockStart) break;
+        if (nBlockStart < start) nBlockStart = start;
+        if (end < nBlockEnd) nBlockEnd = end;
+        memset(sequence + nBlockStart - start, 'N', nBlockEnd - nBlockStart);
+    }
+}
+
+static void
+applyMask(char sequence[], uint32_t start, uint32_t end,
+        uint32_t maskBlockCount, uint32_t maskBlockStarts[], uint32_t maskBlockSizes[])
+{
+    uint32_t i, j;
+    for (i = 0; i < maskBlockCount; i++) {
+        uint32_t maskBlockStart = maskBlockStarts[i];
+        uint32_t maskBlockEnd = maskBlockStart + maskBlockSizes[i];
+        if (maskBlockEnd < start) continue;
+        if (end < maskBlockStart) break;
+        if (maskBlockStart < start) maskBlockStart = start;
+        if (end < maskBlockEnd) maskBlockEnd = end;
+        for (j = maskBlockStart - start; j < maskBlockEnd - start; j++)
+            sequence[j] += 32;
+    }
 }
 
 int main(int argc, char *argv[])
@@ -295,6 +340,7 @@ int main(int argc, char *argv[])
     uint8_t nameSize;
     char name[256];
     uint32_t offset;
+    uint32_t* offsets;
     uint32_t dnaSize;
     uint32_t nBlockCount;
     uint32_t* nBlockStarts;
@@ -303,17 +349,22 @@ int main(int argc, char *argv[])
     uint32_t* maskBlockStarts;
     uint32_t* maskBlockSizes;
     char* sequence;
-    if (argc != 2) {
-        printf("missing input file name\n");
+    uint32_t start;
+    uint32_t end;
+    if (argc != 4) {
+        printf("missing input file name, start, end\n");
         return 0;
     }
+    start = atoi(argv[2]);
+    end = atoi(argv[3]);
     ptr = fopen(argv[1], "rt");  /* r for read, b for binary */
     fread(&signature, 4, 1, ptr);
     switch (signature) {
-        case 0x1A412743: printf("signature: same architecture\n"); break;
-        case 0x4327411a: printf("signature: byte-swapped\n"); isByteSwapped = 1; break;
+        case 0x1A412743: break;
+        case 0x4327411a: isByteSwapped = 1; break;
         default:
             printf("Unknown signature %X\n", signature);
+            fclose(ptr);
             return 0;
     }
     fread(&version, 4, 1, ptr);
@@ -323,10 +374,12 @@ int main(int argc, char *argv[])
     }
     fread(&sequenceCount, 4, 1, ptr);
     if (isByteSwapped) BYTESWAP(sequenceCount);
-    printf("Number of sequences is %d\n", sequenceCount);
+    offsets = malloc(sequenceCount*sizeof(uint32_t));
     fread(&reserved, 4, 1, ptr);
     if (reserved != 0) {
         printf("Found non-zero reserved field %u; aborting\n", reserved);
+        free(offsets);
+        fclose(ptr);
         return 0;
     }
     for (i = 0; i < sequenceCount; i++) {
@@ -334,18 +387,16 @@ int main(int argc, char *argv[])
         fread(name, nameSize, 1, ptr);
         /* nameSize <= 255 */
         name[nameSize] = '\0';
-        printf("sequence %u name is %s nameSize is %u\n", i, name, nameSize);
         fread(&offset, 4, 1, ptr);
         if (isByteSwapped) BYTESWAP(offset);
-        printf("sequence %u offset is %u\n", i, offset);
+        offsets[i] = offset;
     }
     for (i = 0; i < sequenceCount; i++) {
+        fseek(ptr, offsets[i], SEEK_SET);
         fread(&dnaSize, 4, 1, ptr);
         if (isByteSwapped) BYTESWAP(dnaSize);
-        printf("sequence %u dnaSize is %u\n", i, dnaSize);
         fread(&nBlockCount, 4, 1, ptr);
         if (isByteSwapped) BYTESWAP(nBlockCount);
-        printf("sequence %u number of blocks of Ns is %u\n", i, nBlockCount);
         nBlockStarts = malloc(nBlockCount*sizeof(uint32_t));
         nBlockSizes = malloc(nBlockCount*sizeof(uint32_t));
         fread(nBlockStarts, 4, nBlockCount, ptr);
@@ -356,10 +407,8 @@ int main(int argc, char *argv[])
                 BYTESWAP(nBlockSizes[j]);
             }
         }
-        for (j = 0; j < nBlockCount; j++) printf("nBlock start = %u size = %u\n", nBlockStarts[j], nBlockSizes[j]);
         fread(&maskBlockCount, 4, 1, ptr);
         if (isByteSwapped) BYTESWAP(maskBlockCount);
-        printf("sequence %u number of masked blocks is %u\n", i, maskBlockCount);
         maskBlockStarts = malloc(maskBlockCount*sizeof(uint32_t));
         maskBlockSizes = malloc(maskBlockCount*sizeof(uint32_t));
         fread(maskBlockStarts, 4, maskBlockCount, ptr);
@@ -370,16 +419,28 @@ int main(int argc, char *argv[])
                 BYTESWAP(maskBlockSizes[j]);
             }
         }
-        for (j = 0; j < maskBlockCount; j++) printf("nMask start = %u size = %u\n", maskBlockStarts[j], maskBlockSizes[j]);
         fread(&reserved, 4, 1, ptr);
         if (reserved != 0) {
             printf("Found non-zero reserved field %u in sequence record %i; aborting\n", reserved, i);
+            fclose(ptr);
+            free(nBlockStarts);
+            free(nBlockSizes);
+            free(maskBlockStarts);
+            free(maskBlockSizes);
+            free(offsets);
             return 0;
         }
-        sequence = unpack(dnaSize, ptr);
-        printf("sequence starts with %c%c%c%c%c\n", sequence[0], sequence[1], sequence[2], sequence[3], sequence[4]);
-        printf("sequence ends with %c%c%c%c%c\n", sequence[dnaSize-5], sequence[dnaSize-4], sequence[dnaSize-3], sequence[dnaSize-2], sequence[dnaSize-1]);
+        sequence = unpack(ptr, start, end);
+        applyNs(sequence, start, end, nBlockCount, nBlockStarts, nBlockSizes);
+        applyMask(sequence, start, end,
+                  maskBlockCount, maskBlockStarts, maskBlockSizes);
+        printf("%s\n", sequence);
         free(sequence);
+        free(nBlockStarts);
+        free(nBlockSizes);
+        free(maskBlockStarts);
+        free(maskBlockSizes);
     }
+    free(offsets);
     return 0;
 }
