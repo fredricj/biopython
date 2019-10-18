@@ -399,6 +399,8 @@ else:
                   ["Bio/PDB/kdtrees.c"]),
         Extension("Bio.KDTree._CKDTree",
                   ["Bio/KDTree/KDTree.c", "Bio/KDTree/KDTreemodule.c"]),
+        Extension("Bio.SeqIO.twoBitIO",
+                  ["Bio/SeqIO/TwoBitIO.c"]),
         ]
     if not is_pypy():
         # Bio.trie has a problem under PyPy2 v5.6 and 5.7

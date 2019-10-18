@@ -1,3 +1,5 @@
+#include "Python.h"
+
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -334,7 +336,8 @@ applyMask(char sequence[], uint32_t start, uint32_t end,
     }
 }
 
-int main(int argc, char *argv[])
+static PyObject*
+do_perform(const char filename[], uint32_t start, uint32_t end)
 {
     int isByteSwapped = 0;
     int32_t signature;
@@ -355,15 +358,9 @@ int main(int argc, char *argv[])
     uint32_t* maskBlockStarts;
     uint32_t* maskBlockSizes;
     char* sequence;
-    uint32_t start;
-    uint32_t end;
-    if (argc != 4) {
-        printf("missing input file name, start, end\n");
-        return 0;
-    }
-    start = atoi(argv[2]);
-    end = atoi(argv[3]);
-    ptr = fopen(argv[1], "rt");  /* r for read, b for binary */
+    PyObject* s;
+    PyObject* tuple;
+    ptr = fopen(filename, "rt");  /* r for read, b for binary */
     fread(&signature, 4, 1, ptr);
     switch (signature) {
         case 0x1A412743: break;
@@ -397,6 +394,7 @@ int main(int argc, char *argv[])
         if (isByteSwapped) BYTESWAP(offset);
         offsets[i] = offset;
     }
+    tuple = PyTuple_New(sequenceCount);
     for (i = 0; i < sequenceCount; i++) {
         fseek(ptr, offsets[i], SEEK_SET);
         fread(&dnaSize, 4, 1, ptr);
@@ -440,7 +438,8 @@ int main(int argc, char *argv[])
         applyNs(sequence, start, end, nBlockCount, nBlockStarts, nBlockSizes);
         applyMask(sequence, start, end,
                   maskBlockCount, maskBlockStarts, maskBlockSizes);
-        printf("%s\n", sequence);
+        s = PyUnicode_FromString(sequence);
+        PyTuple_SET_ITEM(tuple, i, s);
         free(sequence);
         free(nBlockStarts);
         free(nBlockSizes);
@@ -448,5 +447,58 @@ int main(int argc, char *argv[])
         free(maskBlockSizes);
     }
     free(offsets);
-    return 0;
+    fclose(ptr);
+    return tuple;
+}
+
+
+/* kcluster */
+static char perform__doc__[] = "Perform test";
+
+static PyObject*
+perform(PyObject* self, PyObject* args, PyObject* keywords)
+{
+    const char* filename;
+    unsigned int start;
+    unsigned int end;
+    static char* kwlist[] = {"filename",
+                             "start",
+                             "end",
+                              NULL};
+
+    if (!PyArg_ParseTupleAndKeywords(args, keywords, "sII", kwlist,
+                                     &filename, &start, &end)) return NULL;
+    return do_perform(filename, start, end);
+}
+
+static struct PyMethodDef twoBitIO_methods[] = {
+    {"perform",
+     (PyCFunction)perform,
+     METH_VARARGS | METH_KEYWORDS,
+     perform__doc__
+    },
+    {NULL,          NULL, 0, NULL} /* sentinel */
+};
+
+
+static struct PyModuleDef moduledef = {
+    PyModuleDef_HEAD_INIT,
+    "twoBitIO",
+    "Parser for DNA sequence data in 2bit format",
+    -1,
+    twoBitIO_methods,
+    NULL,
+    NULL,
+    NULL,
+    NULL
+};
+
+PyObject *
+PyInit_twoBitIO(void)
+{
+    PyObject *module;
+
+    module = PyModule_Create(&moduledef);
+    if (module == NULL) return NULL;
+    return module;
 }
