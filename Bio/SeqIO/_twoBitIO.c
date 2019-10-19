@@ -887,10 +887,10 @@ TwoBitIterator(PyObject* self, PyObject* args, PyObject* keywords)
         free(maskBlockSizes);
     }
     free(offsets);
-    return tuple;
+    return Py_BuildValue("OO", isByteSwapped ? Py_True: Py_False, tuple);
 }
 
-static struct PyMethodDef TwoBitIO_methods[] = {
+static struct PyMethodDef _twoBitIO_methods[] = {
     {"TwoBitIterator",
      (PyCFunction)TwoBitIterator,
      METH_VARARGS | METH_KEYWORDS,
@@ -902,10 +902,10 @@ static struct PyMethodDef TwoBitIO_methods[] = {
 
 static struct PyModuleDef moduledef = {
     PyModuleDef_HEAD_INIT,
-    "TwoBitIO",
+    "_twoBitIO",
     "Parser for DNA sequence data in 2bit format",
     -1,
-    TwoBitIO_methods,
+    _twoBitIO_methods,
     NULL,
     NULL,
     NULL,
@@ -913,7 +913,7 @@ static struct PyModuleDef moduledef = {
 };
 
 PyObject *
-PyInit_TwoBitIO(void)
+PyInit__twoBitIO(void)
 {
     PyObject *module;
 

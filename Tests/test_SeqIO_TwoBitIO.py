@@ -10,14 +10,14 @@ from Bio.SeqIO import TwoBitIO
 
 path = "TwoBit/sequence.littleendian.2bit"
 handle = open(path)
-f = TwoBitIO.TwoBitFile(handle)
+f = TwoBitIO.TwoBitIterator(handle, 0, 1)
 assert len(f) == 5
 assert f.isByteSwapped is False
 handle.close()
 
 path = "TwoBit/sequence.bigendian.2bit"
 handle = open(path)
-f = TwoBitIO.TwoBitFile(handle)
+f = TwoBitIO.TwoBitIterator(handle, 0, 1)
 assert len(f) == 5
 assert f.isByteSwapped is True
 handle.close()
