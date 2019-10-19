@@ -270,101 +270,23 @@ static const char bases[][4] = {"TTTT",  /* 00 00 00 00 */
                                };
 
 static int
-read_uint8(int fd, uint8_t* pointer, const char variable[])
-{
-    const ssize_t n = read(fd, pointer, 1);
-    switch (n) {
-        case 1:
-            return 1;
-        case 0:
-            PyErr_Format(PyExc_RuntimeError,
-                         "unexpected end of file while attempting to read %s",
-                         variable);
-            return 0;
-        case -1:
-            PyErr_Format(PyExc_RuntimeError,
-                         "error occurred trying to read %s (errno = %d)",
-                         variable, errno);
-            return 0;
-        default:
-            PyErr_Format(PyExc_RuntimeError,
-                         "unexpected error occurred while attempting to read %s",
-                         variable);
-            return 0;
-    }
-}
-
-static int
-read_uint32(int fd, uint32_t* pointer, const char variable[])
-{
-    const ssize_t n = read(fd, pointer, 4);
-    switch (n) {
-        case 4:
-            return 1;
-        case 0:
-            PyErr_Format(PyExc_RuntimeError,
-                         "unexpected end of file while attempting to read %s",
-                         variable);
-            return 0;
-        case -1:
-            PyErr_Format(PyExc_RuntimeError,
-                         "error occurred trying to read %s (errno = %d)",
-                         variable, errno);
-            return 0;
-        default:
-            PyErr_Format(PyExc_RuntimeError,
-                         "insufficient data while attempting to read %s",
-                         variable);
-            return 0;
-    }
-}
-
-static int
-read_string(int fd, char* pointer, uint8_t size, const char variable[])
+safe_read(int fd, ssize_t size, void* pointer, const char variable[])
 {
     const ssize_t n = read(fd, pointer, size);
     if (n == size) return 1;
     switch (n) {
-        case 0:
-            PyErr_Format(PyExc_RuntimeError,
-                         "unexpected end of file while attempting to read %s",
-                         variable);
-            return 0;
         case -1:
             PyErr_Format(PyExc_RuntimeError,
-                         "error occurred trying to read %s (errno = %d)",
-                         variable, errno);
-            return 0;
-        default:
-            PyErr_Format(PyExc_RuntimeError,
-                         "insufficient data while attempting to read %s",
-                         variable);
-            return 0;
-    }
-}
-
-static int
-read_data(int fd, unsigned char* pointer, uint32_t size, const char variable[])
-{
-    const ssize_t n = read(fd, pointer, size);
-    if (n == size) return 1;
-    switch (n) {
+                "error occurred trying to read %s (errno = %d)",
+                variable, errno);
+            break;
         case 0:
-            PyErr_Format(PyExc_RuntimeError,
-                         "unexpected end of file while attempting to read %s",
-                         variable);
-            return 0;
-        case -1:
-            PyErr_Format(PyExc_RuntimeError,
-                         "error occurred trying to read %s (errno = %d)",
-                         variable, errno);
-            return 0;
         default:
             PyErr_Format(PyExc_RuntimeError,
-                         "insufficient data while attempting to read %s",
-                         variable);
-            return 0;
+                "unexpected end of file while reading %s", variable);
+            break;
     }
+    return 0;
 }
 
 static char* unpack(int fd, uint32_t start, uint32_t end) {
@@ -379,7 +301,7 @@ static char* unpack(int fd, uint32_t start, uint32_t end) {
         PyErr_SetString(PyExc_RuntimeError, "failed to seek in sequence");
         return NULL;
     }
-    if (!read_data(fd, bytes, byteSize, "sequence data")) return NULL;
+    if (!safe_read(fd, byteSize, bytes, "sequence data")) return NULL;
     start -= byteStart * 4;
     if (byteStart + 1 == byteEnd) {
         /* one byte only */
@@ -487,7 +409,7 @@ TwoBitFile_new(PyTypeObject *type, PyObject* args, PyObject* keywords)
     fd = PyObject_AsFileDescriptor(fileobj);
     if (fd == -1) return NULL;
 
-    if (!read_uint32(fd, &signature, "signature")) return NULL;
+    if (!safe_read(fd, sizeof(uint32_t), &signature, "signature")) return NULL;
     switch (signature) {
         case 0x1A412743: isByteSwapped = 0; break;
         case 0x4327411a: isByteSwapped = 1; break;
@@ -496,15 +418,17 @@ TwoBitFile_new(PyTypeObject *type, PyObject* args, PyObject* keywords)
                          "Unknown signature %X", signature);
             return 0;
     }
-    if (!read_uint32(fd, &version, "version")) return NULL;
+    if (!safe_read(fd, sizeof(uint32_t), &version, "version")) return NULL;
     if (version != 0) {
         PyErr_Format(PyExc_RuntimeError,
                      "Found non-zero file version %u; aborting", version);
         return 0;
     }
-    if (!read_uint32(fd, &sequenceCount, "sequenceCount")) return NULL;
+    if (!safe_read(fd, sizeof(uint32_t), &sequenceCount, "sequenceCount"))
+        return NULL;
     if (isByteSwapped) BYTESWAP(sequenceCount);
-    if (!read_uint32(fd, &reserved, "reserved field")) return NULL;
+    if (!safe_read(fd, sizeof(uint32_t), &reserved, "reserved field"))
+        return NULL;
     if (reserved != 0) {
         PyErr_SetString(PyExc_RuntimeError,
                         "Found non-zero reserved field; aborting");
@@ -512,9 +436,10 @@ TwoBitFile_new(PyTypeObject *type, PyObject* args, PyObject* keywords)
     }
     offsets = malloc(sequenceCount*sizeof(uint32_t));
     for (i = 0; i < sequenceCount; i++) {
-        if (!read_uint8(fd, &nameSize, "nameSize")) return NULL;
-        if (!read_string(fd, name, nameSize, "name")) return NULL;
-        if (!read_uint32(fd, &offset, "offset")) return NULL;
+        if (!safe_read(fd, sizeof(uint8_t), &nameSize, "nameSize"))
+            return NULL;
+        if (!safe_read(fd, nameSize, name, "name")) return NULL;
+        if (!safe_read(fd, sizeof(uint32_t), &offset, "offset")) return NULL;
         if (isByteSwapped) BYTESWAP(offset);
         name[nameSize] = '\0';  /* nameSize <= 255 */
         offsets[i] = offset;
@@ -524,41 +449,48 @@ TwoBitFile_new(PyTypeObject *type, PyObject* args, PyObject* keywords)
             PyErr_SetString(PyExc_RuntimeError, "failed to seek in file");
             return NULL;
         }
-        if (!read_uint32(fd, &dnaSize, "dnaSize")) return NULL;
+        if (!safe_read(fd, sizeof(uint32_t), &dnaSize, "dnaSize")) return NULL;
         if (isByteSwapped) BYTESWAP(dnaSize);
-        if (!read_uint32(fd, &nBlockCount, "nBlockCount")) return NULL;
+        if (!safe_read(fd, sizeof(uint32_t), &nBlockCount, "nBlockCount"))
+            return NULL;
         if (isByteSwapped) BYTESWAP(nBlockCount);
         nBlockStarts = malloc(nBlockCount*sizeof(uint32_t));
         nBlockSizes = malloc(nBlockCount*sizeof(uint32_t));
         for (j = 0; j < nBlockCount; j++) {
             uint32_t nBlockStart;
-            if (!read_uint32(fd, &nBlockStart, "nBlockStarts")) return NULL;
+            if (!safe_read(fd, sizeof(uint32_t), &nBlockStart, "nBlockStarts"))
+                return NULL;
             if (isByteSwapped) BYTESWAP(nBlockStart);
             nBlockStarts[j] = nBlockStart;
         }
         for (j = 0; j < nBlockCount; j++) {
             uint32_t nBlockSize;
-            if (!read_uint32(fd, &nBlockSize, "nBlockSizes")) return NULL;
+            if (!safe_read(fd, sizeof(uint32_t), &nBlockSize, "nBlockSizes"))
+                return NULL;
             if (isByteSwapped) BYTESWAP(nBlockSize);
             nBlockSizes[j] = nBlockSize;
         }
-        if (!read_uint32(fd, &maskBlockCount, "maskBlockCount")) return NULL;
+        if (!safe_read(fd, sizeof(uint32_t),
+                       &maskBlockCount, "maskBlockCount")) return NULL;
         if (isByteSwapped) BYTESWAP(maskBlockCount);
         maskBlockStarts = malloc(maskBlockCount*sizeof(uint32_t));
         maskBlockSizes = malloc(maskBlockCount*sizeof(uint32_t));
         for (j = 0; j < maskBlockCount; j++) {
             uint32_t maskBlockStart;
-            if (!read_uint32(fd, &maskBlockStart, "maskBlockStarts")) return NULL;
+            if (!safe_read(fd, sizeof(uint32_t),
+                           &maskBlockStart, "maskBlockStarts")) return NULL;
             if (isByteSwapped) BYTESWAP(maskBlockStart);
             maskBlockStarts[j] = maskBlockStart;
         }
         for (j = 0; j < maskBlockCount; j++) {
             uint32_t maskBlockSize;
-            if (!read_uint32(fd, &maskBlockSize, "maskBlockSizes")) return NULL;
+            if (!safe_read(fd, sizeof(uint32_t),
+                           &maskBlockSize, "maskBlockSizes")) return NULL;
             if (isByteSwapped) BYTESWAP(maskBlockSize);
             maskBlockSizes[j] = maskBlockSize;
         }
-        if (!read_uint32(fd, &reserved, "reserved")) return NULL;
+        if (!safe_read(fd, sizeof(uint32_t),
+                       &reserved, "reserved")) return NULL;
         if (reserved != 0) {
             PyErr_Format(PyExc_RuntimeError,
                          "Found non-zero reserved field %u in sequence "
@@ -790,7 +722,7 @@ TwoBitIterator(PyObject* self, PyObject* args, PyObject* keywords)
     fd = PyObject_AsFileDescriptor(fileobj);
     if (fd == -1) return NULL;
 
-    if (!read_uint32(fd, &signature, "signature")) return NULL;
+    if (!safe_read(fd, sizeof(uint32_t), &signature, "signature")) return NULL;
     switch (signature) {
         case 0x1A412743: break;
         case 0x4327411a: isByteSwapped = 1; break;
@@ -799,15 +731,15 @@ TwoBitIterator(PyObject* self, PyObject* args, PyObject* keywords)
                          "Unknown signature %X", signature);
             return 0;
     }
-    if (!read_uint32(fd, &version, "version")) return NULL;
+    if (!safe_read(fd, sizeof(uint32_t), &version, "version")) return NULL;
     if (version != 0) {
         PyErr_Format(PyExc_RuntimeError,
                      "Found non-zero file version %u; aborting", version);
         return 0;
     }
-    if (!read_uint32(fd, &sequenceCount, "sequenceCount")) return NULL;
+    if (!safe_read(fd, sizeof(uint32_t), &sequenceCount, "sequenceCount")) return NULL;
     if (isByteSwapped) BYTESWAP(sequenceCount);
-    if (!read_uint32(fd, &reserved, "reserved field")) return NULL;
+    if (!safe_read(fd, sizeof(uint32_t), &reserved, "reserved field")) return NULL;
     if (reserved != 0) {
         PyErr_SetString(PyExc_RuntimeError,
                         "Found non-zero reserved field; aborting");
@@ -815,9 +747,9 @@ TwoBitIterator(PyObject* self, PyObject* args, PyObject* keywords)
     }
     offsets = malloc(sequenceCount*sizeof(uint32_t));
     for (i = 0; i < sequenceCount; i++) {
-        if (!read_uint8(fd, &nameSize, "nameSize")) return NULL;
-        if (!read_string(fd, name, nameSize, "name")) return NULL;
-        if (!read_uint32(fd, &offset, "offset")) return NULL;
+        if (!safe_read(fd, sizeof(uint8_t), &nameSize, "nameSize")) return NULL;
+        if (!safe_read(fd, nameSize, name, "name")) return NULL;
+        if (!safe_read(fd, sizeof(uint32_t), &offset, "offset")) return NULL;
         if (isByteSwapped) BYTESWAP(offset);
         name[nameSize] = '\0';  /* nameSize <= 255 */
         offsets[i] = offset;
@@ -828,41 +760,41 @@ TwoBitIterator(PyObject* self, PyObject* args, PyObject* keywords)
             PyErr_SetString(PyExc_RuntimeError, "failed to seek in file");
             return NULL;
         }
-        if (!read_uint32(fd, &dnaSize, "dnaSize")) return NULL;
+        if (!safe_read(fd, sizeof(uint32_t), &dnaSize, "dnaSize")) return NULL;
         if (isByteSwapped) BYTESWAP(dnaSize);
-        if (!read_uint32(fd, &nBlockCount, "nBlockCount")) return NULL;
+        if (!safe_read(fd, sizeof(uint32_t), &nBlockCount, "nBlockCount")) return NULL;
         if (isByteSwapped) BYTESWAP(nBlockCount);
         nBlockStarts = malloc(nBlockCount*sizeof(uint32_t));
         nBlockSizes = malloc(nBlockCount*sizeof(uint32_t));
         for (j = 0; j < nBlockCount; j++) {
             uint32_t nBlockStart;
-            if (!read_uint32(fd, &nBlockStart, "nBlockStarts")) return NULL;
+            if (!safe_read(fd, sizeof(uint32_t), &nBlockStart, "nBlockStarts")) return NULL;
             if (isByteSwapped) BYTESWAP(nBlockStart);
             nBlockStarts[j] = nBlockStart;
         }
         for (j = 0; j < nBlockCount; j++) {
             uint32_t nBlockSize;
-            if (!read_uint32(fd, &nBlockSize, "nBlockSizes")) return NULL;
+            if (!safe_read(fd, sizeof(uint32_t), &nBlockSize, "nBlockSizes")) return NULL;
             if (isByteSwapped) BYTESWAP(nBlockSize);
             nBlockSizes[j] = nBlockSize;
         }
-        if (!read_uint32(fd, &maskBlockCount, "maskBlockCount")) return NULL;
+        if (!safe_read(fd, sizeof(uint32_t), &maskBlockCount, "maskBlockCount")) return NULL;
         if (isByteSwapped) BYTESWAP(maskBlockCount);
         maskBlockStarts = malloc(maskBlockCount*sizeof(uint32_t));
         maskBlockSizes = malloc(maskBlockCount*sizeof(uint32_t));
         for (j = 0; j < maskBlockCount; j++) {
             uint32_t maskBlockStart;
-            if (!read_uint32(fd, &maskBlockStart, "maskBlockStarts")) return NULL;
+            if (!safe_read(fd, sizeof(uint32_t), &maskBlockStart, "maskBlockStarts")) return NULL;
             if (isByteSwapped) BYTESWAP(maskBlockStart);
             maskBlockStarts[j] = maskBlockStart;
         }
         for (j = 0; j < maskBlockCount; j++) {
             uint32_t maskBlockSize;
-            if (!read_uint32(fd, &maskBlockSize, "maskBlockSizes")) return NULL;
+            if (!safe_read(fd, sizeof(uint32_t), &maskBlockSize, "maskBlockSizes")) return NULL;
             if (isByteSwapped) BYTESWAP(maskBlockSize);
             maskBlockSizes[j] = maskBlockSize;
         }
-        if (!read_uint32(fd, &reserved, "reserved")) return NULL;
+        if (!safe_read(fd, sizeof(uint32_t), &reserved, "reserved")) return NULL;
         if (reserved != 0) {
             PyErr_Format(PyExc_RuntimeError,
                          "Found non-zero reserved field %u in sequence "
