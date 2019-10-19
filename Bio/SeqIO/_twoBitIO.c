@@ -457,18 +457,16 @@ TwoBitFile_new(PyTypeObject *type, PyObject* args, PyObject* keywords)
         nBlockStarts = malloc(nBlockCount*sizeof(uint32_t));
         nBlockSizes = malloc(nBlockCount*sizeof(uint32_t));
         for (j = 0; j < nBlockCount; j++) {
-            uint32_t nBlockStart;
-            if (!safe_read(fd, sizeof(uint32_t), &nBlockStart, "nBlockStarts"))
+            if (!safe_read(fd, sizeof(uint32_t),
+                           nBlockStarts+j, "nBlockStarts"))
                 return NULL;
-            if (isByteSwapped) BYTESWAP(nBlockStart);
-            nBlockStarts[j] = nBlockStart;
+            if (isByteSwapped) BYTESWAP(nBlockStarts[j]);
         }
         for (j = 0; j < nBlockCount; j++) {
-            uint32_t nBlockSize;
-            if (!safe_read(fd, sizeof(uint32_t), &nBlockSize, "nBlockSizes"))
+            if (!safe_read(fd, sizeof(uint32_t),
+                           nBlockSizes+j, "nBlockSizes"))
                 return NULL;
-            if (isByteSwapped) BYTESWAP(nBlockSize);
-            nBlockSizes[j] = nBlockSize;
+            if (isByteSwapped) BYTESWAP(nBlockSizes[j]);
         }
         if (!safe_read(fd, sizeof(uint32_t),
                        &maskBlockCount, "maskBlockCount")) return NULL;
@@ -476,18 +474,14 @@ TwoBitFile_new(PyTypeObject *type, PyObject* args, PyObject* keywords)
         maskBlockStarts = malloc(maskBlockCount*sizeof(uint32_t));
         maskBlockSizes = malloc(maskBlockCount*sizeof(uint32_t));
         for (j = 0; j < maskBlockCount; j++) {
-            uint32_t maskBlockStart;
             if (!safe_read(fd, sizeof(uint32_t),
-                           &maskBlockStart, "maskBlockStarts")) return NULL;
-            if (isByteSwapped) BYTESWAP(maskBlockStart);
-            maskBlockStarts[j] = maskBlockStart;
+                           maskBlockStarts+j, "maskBlockStarts")) return NULL;
+            if (isByteSwapped) BYTESWAP(maskBlockStarts[j]);
         }
         for (j = 0; j < maskBlockCount; j++) {
-            uint32_t maskBlockSize;
             if (!safe_read(fd, sizeof(uint32_t),
-                           &maskBlockSize, "maskBlockSizes")) return NULL;
-            if (isByteSwapped) BYTESWAP(maskBlockSize);
-            maskBlockSizes[j] = maskBlockSize;
+                           maskBlockSizes+j, "maskBlockSizes")) return NULL;
+            if (isByteSwapped) BYTESWAP(maskBlockSizes[j]);
         }
         if (!safe_read(fd, sizeof(uint32_t),
                        &reserved, "reserved")) return NULL;
@@ -767,34 +761,31 @@ TwoBitIterator(PyObject* self, PyObject* args, PyObject* keywords)
         nBlockStarts = malloc(nBlockCount*sizeof(uint32_t));
         nBlockSizes = malloc(nBlockCount*sizeof(uint32_t));
         for (j = 0; j < nBlockCount; j++) {
-            uint32_t nBlockStart;
-            if (!safe_read(fd, sizeof(uint32_t), &nBlockStart, "nBlockStarts")) return NULL;
-            if (isByteSwapped) BYTESWAP(nBlockStart);
-            nBlockStarts[j] = nBlockStart;
+            if (!safe_read(fd, sizeof(uint32_t),
+                           nBlockStarts+j, "nBlockStarts")) return NULL;
+            if (isByteSwapped) BYTESWAP(nBlockStarts[j]);
         }
         for (j = 0; j < nBlockCount; j++) {
-            uint32_t nBlockSize;
-            if (!safe_read(fd, sizeof(uint32_t), &nBlockSize, "nBlockSizes")) return NULL;
-            if (isByteSwapped) BYTESWAP(nBlockSize);
-            nBlockSizes[j] = nBlockSize;
+            if (!safe_read(fd, sizeof(uint32_t),
+                           nBlockSizes+j, "nBlockSizes")) return NULL;
+            if (isByteSwapped) BYTESWAP(nBlockSizes[j]);
         }
         if (!safe_read(fd, sizeof(uint32_t), &maskBlockCount, "maskBlockCount")) return NULL;
         if (isByteSwapped) BYTESWAP(maskBlockCount);
         maskBlockStarts = malloc(maskBlockCount*sizeof(uint32_t));
         maskBlockSizes = malloc(maskBlockCount*sizeof(uint32_t));
         for (j = 0; j < maskBlockCount; j++) {
-            uint32_t maskBlockStart;
-            if (!safe_read(fd, sizeof(uint32_t), &maskBlockStart, "maskBlockStarts")) return NULL;
-            if (isByteSwapped) BYTESWAP(maskBlockStart);
-            maskBlockStarts[j] = maskBlockStart;
+            if (!safe_read(fd, sizeof(uint32_t),
+                           maskBlockStarts+j, "maskBlockStarts")) return NULL;
+            if (isByteSwapped) BYTESWAP(maskBlockStarts[j]);
         }
         for (j = 0; j < maskBlockCount; j++) {
-            uint32_t maskBlockSize;
-            if (!safe_read(fd, sizeof(uint32_t), &maskBlockSize, "maskBlockSizes")) return NULL;
-            if (isByteSwapped) BYTESWAP(maskBlockSize);
-            maskBlockSizes[j] = maskBlockSize;
+            if (!safe_read(fd, sizeof(uint32_t),
+                           maskBlockSizes+j, "maskBlockSizes")) return NULL;
+            if (isByteSwapped) BYTESWAP(maskBlockSizes[j]);
         }
-        if (!safe_read(fd, sizeof(uint32_t), &reserved, "reserved")) return NULL;
+        if (!safe_read(fd, sizeof(uint32_t),
+                       &reserved, "reserved")) return NULL;
         if (reserved != 0) {
             PyErr_Format(PyExc_RuntimeError,
                          "Found non-zero reserved field %u in sequence "
