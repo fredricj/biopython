@@ -405,6 +405,7 @@ from . import SffIO
 from . import SnapGeneIO
 from . import SwissIO
 from . import TabIO
+from . import TwoBitIO
 from . import QualityIO  # FastQ and qual files
 from . import UniprotIO
 from . import XdnaIO
@@ -457,6 +458,7 @@ _FormatToIterator = {
     "sff-trim": SffIO._SffTrimIterator,
     "swiss": SwissIO.SwissIterator,
     "tab": TabIO.TabIterator,
+    "twobit": TwoBitIO.TwoBitIterator,
     "uniprot-xml": UniprotIO.UniprotIterator,
     "xdna": XdnaIO.XdnaIterator,
 }

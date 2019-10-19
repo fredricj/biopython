@@ -399,7 +399,7 @@ else:
                   ["Bio/PDB/kdtrees.c"]),
         Extension("Bio.KDTree._CKDTree",
                   ["Bio/KDTree/KDTree.c", "Bio/KDTree/KDTreemodule.c"]),
-        Extension("Bio.SeqIO.twoBitIO",
+        Extension("Bio.SeqIO.TwoBitIO",
                   ["Bio/SeqIO/TwoBitIO.c"]),
         ]
     if not is_pypy():

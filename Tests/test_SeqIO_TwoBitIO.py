@@ -6,11 +6,21 @@ import random
 from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
 from Bio import SeqIO
-from Bio.SeqIO import twoBitIO
+from Bio.SeqIO import TwoBitIO
 
-# path = "TwoBit/sequence.littleendian.2bit"
-# records = SeqIO.parse(path, '2bit')
-# record = next(records)
+path = "TwoBit/sequence.littleendian.2bit"
+handle = open(path)
+f = TwoBitIO.TwoBitFile(handle)
+assert len(f) == 5
+assert f.isByteSwapped is False
+handle.close()
+
+path = "TwoBit/sequence.bigendian.2bit"
+handle = open(path)
+f = TwoBitIO.TwoBitFile(handle)
+assert len(f) == 5
+assert f.isByteSwapped is True
+handle.close()
 
 def perform_test(length=50, start=0, end=None, n=10):
     if end is None:
@@ -27,7 +37,7 @@ def perform_test(length=50, start=0, end=None, n=10):
     handle.close()
     os.system("faToTwoBit test.fa test.2bit")
     handle = open("test.2bit")
-    sequences = twoBitIO.perform(handle, start, end)
+    sequences = TwoBitIO.TwoBitIterator(handle, start, end)
     handle.close()
     for sequence, record in zip(sequences, records):
         assert sequence == record.seq[start:end]
