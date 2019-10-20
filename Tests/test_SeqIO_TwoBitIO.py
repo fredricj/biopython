@@ -10,14 +10,14 @@ from Bio.SeqIO import TwoBitIO
 
 path = "TwoBit/sequence.littleendian.2bit"
 handle = open(path)
-f = TwoBitIO.TwoBitIterator(handle, 0, 1)
+f = TwoBitIO.TwoBitIterator(handle)
 assert len(f) == 5
 assert f.isByteSwapped is False
 handle.close()
 
 path = "TwoBit/sequence.bigendian.2bit"
 handle = open(path)
-f = TwoBitIO.TwoBitIterator(handle, 0, 1)
+f = TwoBitIO.TwoBitIterator(handle)
 assert len(f) == 5
 assert f.isByteSwapped is True
 handle.close()
@@ -37,10 +37,10 @@ def perform_test(length=50, start=0, end=None, n=10):
     handle.close()
     os.system("faToTwoBit test.fa test.2bit")
     handle = open("test.2bit")
-    sequences = TwoBitIO.TwoBitIterator(handle, start, end)
+    sequences = TwoBitIO.TwoBitIterator(handle)
+    for (sequence, twobit_sequence), record in zip(sequences, records):
+        assert sequence[start:end] == record.seq[start:end]
     handle.close()
-    for sequence, record in zip(sequences, records):
-        assert sequence == record.seq[start:end]
 
 for length in range(1,21):
     for start in range(length):
