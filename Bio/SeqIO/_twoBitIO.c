@@ -289,7 +289,7 @@ safe_read(int fd, ssize_t size, void* pointer, const char variable[])
     return 0;
 }
 
-static char* unpack(int fd, uint32_t start, uint32_t end) {
+static char* extract(int fd, uint32_t start, uint32_t end) {
     uint32_t i;
     const uint32_t size = end - start;
     const uint32_t byteStart = start / 4;
@@ -393,8 +393,14 @@ TwoBitSequence_length(TwoBitSequence *self)
 static PyObject*
 TwoBitSequence_subscript(TwoBitSequence* self, PyObject* item)
 {
-    char buffer[256];
+    char* sequence;
     const uint32_t n = self->dnaSize;
+    const int fd = self->fd;
+    PyObject* obj;
+    if (lseek(fd, self->offset, SEEK_SET) == -1) {
+        PyErr_SetString(PyExc_RuntimeError, "failed to seek in file");
+        return NULL;
+    }
     if (PyIndex_Check(item)) {
         Py_ssize_t i = PyNumber_AsSsize_t(item, PyExc_IndexError);
         if (i == -1 && PyErr_Occurred())
@@ -406,25 +412,19 @@ TwoBitSequence_subscript(TwoBitSequence* self, PyObject* item)
                             "TwoBitSequence index out of range");
             return NULL;
         }
-        sprintf(buffer, "item %lu", i);
-        return PyUnicode_FromString(buffer);
+        sequence = extract(fd, i, i+1);
+        obj = PyUnicode_FromString(sequence);
+        free(sequence);
     }
     else if (PySlice_Check(item)) {
-        Py_ssize_t i, j;
         Py_ssize_t start, stop, step, slicelength;
         if (PySlice_GetIndicesEx(item, n, &start, &stop, &step,
                                  &slicelength) == -1) return NULL;
-        if (slicelength == 0) return PyList_New(0);
+        if (slicelength == 0) obj = PyUnicode_FromString("");
         else {
-            PyObject* text;
-            PyObject* result = PyList_New(slicelength);
-            if (!result) return PyErr_NoMemory();
-            for (i = 0, j = start; i < slicelength; i++, j += step) {
-                sprintf(buffer, "item %lu", j);
-                text = PyUnicode_FromString(buffer);
-                PyList_SET_ITEM(result, i, text);
-            }
-            return result;
+            sequence = extract(fd, start, stop);
+            obj = PyUnicode_FromString(sequence);
+            free(sequence);
         }
     }
     else {
@@ -433,6 +433,7 @@ TwoBitSequence_subscript(TwoBitSequence* self, PyObject* item)
                      Py_TYPE(item)->tp_name);
         return NULL;
     }
+    return obj;
 }
 
 static PyMappingMethods TwoBitSequence_mapping = {
@@ -591,7 +592,9 @@ TwoBitIterator(PyObject* self, PyObject* args, PyObject* keywords)
             free(offsets);
             return 0;
         }
-        sequence = unpack(fd, start, end);
+        /* get the file position at the start of the sequence data */
+        offset = lseek(fd, 0, SEEK_CUR);
+        sequence = extract(fd, start, end);
         applyNs(sequence, start, end, nBlockCount, nBlockStarts, nBlockSizes);
         applyMask(sequence, start, end,
                   maskBlockCount, maskBlockStarts, maskBlockSizes);
