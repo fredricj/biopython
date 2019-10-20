@@ -1,10 +1,5 @@
 #include "Python.h"
 
-#include <stdio.h>
-#include <stdint.h>
-#include <stdlib.h>
-#include <string.h>
-
 
 #define BYTESWAP(x) { \
     uint32_t t = x; \
@@ -289,20 +284,26 @@ safe_read(int fd, ssize_t size, void* pointer, const char variable[])
     return 0;
 }
 
-static char* extract(int fd, uint32_t start, uint32_t end) {
+static int
+extract(int fd, uint32_t start, uint32_t end, char sequence[]) {
     uint32_t i;
     const uint32_t size = end - start;
     const uint32_t byteStart = start / 4;
     const uint32_t byteEnd = (end + 3) / 4;
     const uint32_t byteSize = byteEnd - byteStart;
-    unsigned char* bytes = PyMem_Malloc(byteSize*sizeof(unsigned char));
-    char* sequence = PyMem_Malloc((size+1)*sizeof(char));
+    unsigned char* bytes;
+    int ok = 1;
     if (lseek(fd, byteStart, SEEK_CUR) == -1) {
         PyErr_Format(PyExc_RuntimeError,
                      "failed to seek in sequence (errno = %d)", errno);
-        return NULL;
+        return 0;
     }
-    if (!safe_read(fd, byteSize, bytes, "sequence data")) return NULL;
+    bytes = PyMem_Malloc(byteSize*sizeof(unsigned char));
+    if (!bytes) return 0;
+    if (!safe_read(fd, byteSize, bytes, "sequence data")) {
+        ok = 0;
+        goto exit;
+    }
     start -= byteStart * 4;
     if (byteStart + 1 == byteEnd) {
         /* one byte only */
@@ -319,12 +320,10 @@ static char* extract(int fd, uint32_t start, uint32_t end) {
         memcpy(sequence, bases[*bytes], end + 4);
         bytes++;
         bytes -= byteSize;
-        sequence += (end + 4);
-        sequence -= size;
     }
-    sequence[size] = '\0';
+exit:
     PyMem_Free(bytes);
-    return sequence;
+    return ok;
 }
 
 static void
@@ -391,9 +390,32 @@ TwoBitSequence_dealloc(TwoBitSequence* self)
 static PyObject*
 TwoBitSequence_str(TwoBitSequence* self)
 {
-    char buffer[128];
-    sprintf(buffer, "TwoBit sequence of length %u", self->dnaSize);
-    return PyUnicode_FromString(buffer);
+    char* sequence;
+    const int fd = self->fd;
+    const uint32_t size = self->dnaSize;
+    const uint32_t nBlockCount = self->nBlockCount;
+    const uint32_t* const nBlockStarts = self->nBlockStarts;
+    const uint32_t* const nBlockSizes = self->nBlockSizes;
+    const uint32_t maskBlockCount = self->maskBlockCount;
+    const uint32_t* const maskBlockStarts = self->maskBlockStarts;
+    const uint32_t* const maskBlockSizes = self->maskBlockSizes;
+    PyObject* obj;
+    if (lseek(fd, self->offset, SEEK_SET) == -1) {
+        PyErr_Format(PyExc_RuntimeError,
+                     "failed to seek in file (errno = %d)", errno);
+        return NULL;
+    }
+    obj = PyUnicode_New(size, 255);
+    if (!obj) return NULL;
+    sequence = PyUnicode_DATA(obj);
+    if (!extract(fd, 0, size, sequence)) {
+        Py_DECREF(obj);
+        return NULL;
+    }
+    applyNs(sequence, 0, size, nBlockCount, nBlockStarts, nBlockSizes);
+    applyMask(sequence, 0, size,
+              maskBlockCount, maskBlockStarts, maskBlockSizes);
+    return obj;
 }
 
 static int
@@ -431,26 +453,28 @@ TwoBitSequence_subscript(TwoBitSequence* self, PyObject* item)
                             "TwoBitSequence index out of range");
             return NULL;
         }
-        sequence = extract(fd, i, i+1);
+        obj = PyBytes_FromStringAndSize(NULL, 1);
+        if (!obj) return NULL;
+        sequence = PyBytes_AS_STRING(obj);
+        if (!extract(fd, i, i+1, sequence)) return NULL;
         applyNs(sequence, i, i+1, nBlockCount, nBlockStarts, nBlockSizes);
         applyMask(sequence, i, i+1,
                   maskBlockCount, maskBlockStarts, maskBlockSizes);
-        obj = PyUnicode_FromString(sequence);
-        PyMem_Free(sequence);
     }
     else if (PySlice_Check(item)) {
         Py_ssize_t start, stop, step, slicelength;
         if (PySlice_GetIndicesEx(item, n, &start, &stop, &step,
                                  &slicelength) == -1) return NULL;
-        if (slicelength == 0) obj = PyUnicode_FromString("");
+        if (slicelength == 0) obj = PyBytes_FromStringAndSize(NULL, 0);
         else {
-            sequence = extract(fd, start, stop);
+            obj = PyBytes_FromStringAndSize(NULL, stop-start);
+            if (!obj) return NULL;
+            sequence = PyBytes_AS_STRING(obj);
+            if (!extract(fd, start, stop, sequence)) return NULL;
             applyNs(sequence, start, stop,
-                      nBlockCount, nBlockStarts, nBlockSizes);
+                    nBlockCount, nBlockStarts, nBlockSizes);
             applyMask(sequence, start, stop,
-                      maskBlockCount, maskBlockStarts, maskBlockSizes);
-            obj = PyUnicode_FromString(sequence);
-            PyMem_Free(sequence);
+                    maskBlockCount, maskBlockStarts, maskBlockSizes);
         }
     }
     else {

@@ -39,7 +39,7 @@ def perform_test(length=50, start=0, end=None, n=10):
     handle = open("test.2bit")
     sequences = TwoBitIO.TwoBitIterator(handle)
     for sequence, record in zip(sequences, records):
-        assert sequence[start:end] == record.seq[start:end]
+        assert sequence[start:end].decode() == record.seq[start:end]
     handle.close()
 
 for length in range(1,21):
