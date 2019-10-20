@@ -5,10 +5,9 @@ class TwoBitIterator:
 
     def __init__(self, handle):
         self.index = 0
-        isByteSwapped, sequences, twobit_sequences = _twoBitIO.TwoBitIterator(handle)
+        isByteSwapped, sequences = _twoBitIO.TwoBitIterator(handle)
         self.isByteSwapped = isByteSwapped
         self.sequences = sequences
-        self.twobit_sequences = twobit_sequences
 
     def __iter__(self):
         return self
@@ -18,9 +17,8 @@ class TwoBitIterator:
         if index == len(self.sequences):
             raise StopIteration
         sequence = self.sequences[index]
-        twobit_sequence = self.twobit_sequences[index]
         self.index += 1
-        return sequence, twobit_sequence
+        return sequence
 
     def __len__(self):
         return len(self.sequences)

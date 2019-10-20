@@ -515,13 +515,10 @@ TwoBitIterator(PyObject* self, PyObject* args, PyObject* keywords)
     uint32_t maskBlockCount;
     uint32_t* maskBlockStarts;
     uint32_t* maskBlockSizes;
-    char* sequence;
-    PyObject* s;
-    PyObject* sequence_tuple;
     PyObject* tuple;
     PyObject* fileobj;
     int fd;
-    TwoBitSequence* tbs;
+    TwoBitSequence* sequence;
 
     static char* kwlist[] = {"handle", NULL};
 
@@ -546,9 +543,11 @@ TwoBitIterator(PyObject* self, PyObject* args, PyObject* keywords)
                      "Found non-zero file version %u; aborting", version);
         return 0;
     }
-    if (!safe_read(fd, sizeof(uint32_t), &sequenceCount, "sequenceCount")) return NULL;
+    if (!safe_read(fd, sizeof(uint32_t),
+                   &sequenceCount, "sequenceCount")) return NULL;
     if (isByteSwapped) BYTESWAP(sequenceCount);
-    if (!safe_read(fd, sizeof(uint32_t), &reserved, "reserved field")) return NULL;
+    if (!safe_read(fd, sizeof(uint32_t),
+                   &reserved, "reserved field")) return NULL;
     if (reserved != 0) {
         PyErr_SetString(PyExc_RuntimeError,
                         "Found non-zero reserved field; aborting");
@@ -563,7 +562,6 @@ TwoBitIterator(PyObject* self, PyObject* args, PyObject* keywords)
         name[nameSize] = '\0';  /* nameSize <= 255 */
         offsets[i] = offset;
     }
-    sequence_tuple = PyTuple_New(sequenceCount);
     tuple = PyTuple_New(sequenceCount);
     for (i = 0; i < sequenceCount; i++) {
         if (lseek(fd, offsets[i], SEEK_SET) == -1) {
@@ -615,32 +613,23 @@ TwoBitIterator(PyObject* self, PyObject* args, PyObject* keywords)
         }
         /* get the file position at the start of the sequence data */
         offset = lseek(fd, 0, SEEK_CUR);
-        sequence = extract(fd, 0, dnaSize);
-        applyNs(sequence, 0, dnaSize, nBlockCount, nBlockStarts, nBlockSizes);
-        applyMask(sequence, 0, dnaSize,
-                  maskBlockCount, maskBlockStarts, maskBlockSizes);
-        s = PyUnicode_FromString(sequence);
-        PyTuple_SET_ITEM(sequence_tuple, i, s);
-
-        tbs = (TwoBitSequence*)PyType_GenericAlloc(&TwoBitSequenceType, 0);
-        if (!tbs) return NULL;
+        sequence = (TwoBitSequence*)PyType_GenericAlloc(&TwoBitSequenceType, 0);
+        if (!sequence) return NULL;
         Py_INCREF(fileobj);
-        tbs->fileobj = fileobj;
-        tbs->fd = fd;
-        tbs->offset = offset;
-        tbs->dnaSize = dnaSize;
-        tbs->nBlockCount = nBlockCount;
-        tbs->nBlockStarts = nBlockStarts;
-        tbs->nBlockSizes = nBlockSizes;
-        tbs->maskBlockCount = maskBlockCount;
-        tbs->maskBlockStarts = maskBlockStarts;
-        tbs->maskBlockSizes = maskBlockSizes;
-        PyTuple_SET_ITEM(tuple, i, (PyObject*)tbs);
-
-        PyMem_Free(sequence);
+        sequence->fileobj = fileobj;
+        sequence->fd = fd;
+        sequence->offset = offset;
+        sequence->dnaSize = dnaSize;
+        sequence->nBlockCount = nBlockCount;
+        sequence->nBlockStarts = nBlockStarts;
+        sequence->nBlockSizes = nBlockSizes;
+        sequence->maskBlockCount = maskBlockCount;
+        sequence->maskBlockStarts = maskBlockStarts;
+        sequence->maskBlockSizes = maskBlockSizes;
+        PyTuple_SET_ITEM(tuple, i, (PyObject*)sequence);
     }
     PyMem_Free(offsets);
-    return Py_BuildValue("OOO", isByteSwapped ? Py_True: Py_False, sequence_tuple, tuple);
+    return Py_BuildValue("OO", isByteSwapped ? Py_True: Py_False, tuple);
 }
 
 static struct PyMethodDef _twoBitIO_methods[] = {
