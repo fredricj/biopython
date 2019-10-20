@@ -363,194 +363,87 @@ static char TwoBitIterator__doc__[] = "Lazy parser of a TwoBit file";
 
 typedef struct {
     PyObject_HEAD
-    int isByteSwapped;
-    uint32_t sequenceCount;
-} TwoBitFile;
+    PyObject* fileobj;
+    int fd;
+    uint32_t offset;
+    uint32_t dnaSize;
+} TwoBitSequence;
 
 static void
-TwoBitFile_dealloc(TwoBitFile* self)
+TwoBitSequence_dealloc(TwoBitSequence* self)
 {
+    Py_DECREF(self->fileobj);
     Py_TYPE(self)->tp_free((PyObject*)self);
 }
 
 static PyObject*
-TwoBitFile_new(PyTypeObject *type, PyObject* args, PyObject* keywords)
+TwoBitSequence_new(PyTypeObject *type, PyObject* args, PyObject* keywords)
 {
-    TwoBitFile* self;
+    TwoBitSequence* self;
 
-    int isByteSwapped;
-    uint32_t signature;
-    uint32_t version;
-    uint32_t sequenceCount;
-    uint32_t reserved;
-    uint32_t i, j;
-    uint8_t nameSize;
-    char name[256];
-    uint32_t offset;
-    uint32_t* offsets;
-    uint32_t dnaSize;
+/*
     uint32_t nBlockCount;
     uint32_t* nBlockStarts;
     uint32_t* nBlockSizes;
     uint32_t maskBlockCount;
-    uint32_t* maskBlockStarts;
-    uint32_t* maskBlockSizes;
+*/
     PyObject* fileobj;
     int fd;
+    unsigned int offset;
+    unsigned int dnaSize;
 
-    static char* kwlist[] = {"handle", NULL};
+    static char* kwlist[] = {"handle",
+                             "descriptor",
+                             "offset",
+                             "dnaSize",
+                             NULL};
 
-    if (!PyArg_ParseTupleAndKeywords(args, keywords, "O", kwlist, &fileobj))
+    if (!PyArg_ParseTupleAndKeywords(args, keywords, "OiII", kwlist,
+                                     &fileobj, &fd, &offset, &dnaSize))
         return NULL;
 
-    self = (TwoBitFile *)type->tp_alloc(type, 0);
+    self = (TwoBitSequence *)type->tp_alloc(type, 0);
     if (!self) return NULL;
 
-    fd = PyObject_AsFileDescriptor(fileobj);
-    if (fd == -1) return NULL;
+    self->fd = fd;
 
-    if (!safe_read(fd, sizeof(uint32_t), &signature, "signature")) return NULL;
-    switch (signature) {
-        case 0x1A412743: isByteSwapped = 0; break;
-        case 0x4327411a: isByteSwapped = 1; break;
-        default:
-            PyErr_Format(PyExc_RuntimeError,
-                         "Unknown signature %X", signature);
-            return 0;
-    }
-    if (!safe_read(fd, sizeof(uint32_t), &version, "version")) return NULL;
-    if (version != 0) {
-        PyErr_Format(PyExc_RuntimeError,
-                     "Found non-zero file version %u; aborting", version);
-        return 0;
-    }
-    if (!safe_read(fd, sizeof(uint32_t), &sequenceCount, "sequenceCount"))
+    self->offset = offset;
+    if (self->offset != offset) {
+        PyErr_SetString(PyExc_OverflowError, "file offset too large");
         return NULL;
-    if (isByteSwapped) BYTESWAP(sequenceCount);
-    if (!safe_read(fd, sizeof(uint32_t), &reserved, "reserved field"))
+    }
+
+    self->dnaSize = dnaSize;
+    if (self->dnaSize != dnaSize) {
+        PyErr_SetString(PyExc_OverflowError, "sequence length too large");
         return NULL;
-    if (reserved != 0) {
-        PyErr_SetString(PyExc_RuntimeError,
-                        "Found non-zero reserved field; aborting");
-        return 0;
     }
-    offsets = malloc(sequenceCount*sizeof(uint32_t));
-    for (i = 0; i < sequenceCount; i++) {
-        if (!safe_read(fd, sizeof(uint8_t), &nameSize, "nameSize"))
-            return NULL;
-        if (!safe_read(fd, nameSize, name, "name")) return NULL;
-        if (!safe_read(fd, sizeof(uint32_t), &offset, "offset")) return NULL;
-        if (isByteSwapped) BYTESWAP(offset);
-        name[nameSize] = '\0';  /* nameSize <= 255 */
-        offsets[i] = offset;
-    }
-    for (i = 0; i < sequenceCount; i++) {
-        if (lseek(fd, offsets[i], SEEK_SET) == -1) {
-            PyErr_SetString(PyExc_RuntimeError, "failed to seek in file");
-            return NULL;
-        }
-        if (!safe_read(fd, sizeof(uint32_t), &dnaSize, "dnaSize")) return NULL;
-        if (isByteSwapped) BYTESWAP(dnaSize);
-        if (!safe_read(fd, sizeof(uint32_t), &nBlockCount, "nBlockCount"))
-            return NULL;
-        if (isByteSwapped) BYTESWAP(nBlockCount);
-        nBlockStarts = malloc(nBlockCount*sizeof(uint32_t));
-        nBlockSizes = malloc(nBlockCount*sizeof(uint32_t));
-        for (j = 0; j < nBlockCount; j++) {
-            if (!safe_read(fd, sizeof(uint32_t),
-                           nBlockStarts+j, "nBlockStarts"))
-                return NULL;
-            if (isByteSwapped) BYTESWAP(nBlockStarts[j]);
-        }
-        for (j = 0; j < nBlockCount; j++) {
-            if (!safe_read(fd, sizeof(uint32_t),
-                           nBlockSizes+j, "nBlockSizes"))
-                return NULL;
-            if (isByteSwapped) BYTESWAP(nBlockSizes[j]);
-        }
-        if (!safe_read(fd, sizeof(uint32_t),
-                       &maskBlockCount, "maskBlockCount")) return NULL;
-        if (isByteSwapped) BYTESWAP(maskBlockCount);
-        maskBlockStarts = malloc(maskBlockCount*sizeof(uint32_t));
-        maskBlockSizes = malloc(maskBlockCount*sizeof(uint32_t));
-        for (j = 0; j < maskBlockCount; j++) {
-            if (!safe_read(fd, sizeof(uint32_t),
-                           maskBlockStarts+j, "maskBlockStarts")) return NULL;
-            if (isByteSwapped) BYTESWAP(maskBlockStarts[j]);
-        }
-        for (j = 0; j < maskBlockCount; j++) {
-            if (!safe_read(fd, sizeof(uint32_t),
-                           maskBlockSizes+j, "maskBlockSizes")) return NULL;
-            if (isByteSwapped) BYTESWAP(maskBlockSizes[j]);
-        }
-        if (!safe_read(fd, sizeof(uint32_t),
-                       &reserved, "reserved")) return NULL;
-        if (reserved != 0) {
-            PyErr_Format(PyExc_RuntimeError,
-                         "Found non-zero reserved field %u in sequence "
-                         "record %i; aborting\n", reserved, i);
-            free(nBlockStarts);
-            free(nBlockSizes);
-            free(maskBlockStarts);
-            free(maskBlockSizes);
-            free(offsets);
-            return 0;
-        }
-        free(nBlockStarts);
-        free(nBlockSizes);
-        free(maskBlockStarts);
-        free(maskBlockSizes);
-    }
-    free(offsets);
-    self->isByteSwapped = isByteSwapped;
-    self->sequenceCount = sequenceCount;
+
+    Py_INCREF(fileobj);
+    self->fileobj = fileobj;
+
     return (PyObject*)self;
 }
 
 static PyObject*
-TwoBitFile_str(TwoBitFile* self)
+TwoBitSequence_str(TwoBitSequence* self)
 {
-    const uint32_t sequenceCount = self->sequenceCount;
     char buffer[128];
-    sprintf(buffer, "TwoBit file with %u sequences", sequenceCount);
-
+    sprintf(buffer, "TwoBit sequence of length %u", self->dnaSize);
     return PyUnicode_FromString(buffer);
 }
 
-static PyObject*
-TwoBitFile_get_isByteSwapped(TwoBitFile* self, void* closure)
-{
-    if (self->isByteSwapped) Py_RETURN_TRUE;
-    else Py_RETURN_FALSE;
-}
-
-static char TwoBitFile_isByteSwapped__doc__[] =
-"returns False if the machine on which the file was created and the machine\n"
-"on which it is being read are both big-endian or both little-endian, and\n"
-"True if one has a big-endian architecture and the other a little-endian.\n"
-"architecture. Bytes are swapped by the parser if the machine on which the\n"
-"file was created and the machine on which the file is being read have\n"
-"different architectures.";
-
-static PyGetSetDef TwoBitFile_getset[] = {
-    {"isByteSwapped",
-     (getter)TwoBitFile_get_isByteSwapped,
-     NULL,
-     TwoBitFile_isByteSwapped__doc__, NULL},
-    {NULL}  /* Sentinel */
-};
-
 static int
-TwoBitFile_length(TwoBitFile *self)
+TwoBitSequence_length(TwoBitSequence *self)
 {
-    return self->sequenceCount;
+    return self->dnaSize;
 }
 
 static PyObject*
-TwoBitFile_subscript(TwoBitFile* self, PyObject* item)
+TwoBitSequence_subscript(TwoBitSequence* self, PyObject* item)
 {
     char buffer[256];
-    const uint32_t n = self->sequenceCount;
+    const uint32_t n = self->dnaSize;
     if (PyIndex_Check(item)) {
         Py_ssize_t i = PyNumber_AsSsize_t(item, PyExc_IndexError);
         if (i == -1 && PyErr_Occurred())
@@ -558,7 +451,8 @@ TwoBitFile_subscript(TwoBitFile* self, PyObject* item)
         if (i < 0)
             i += n;
         if (i < 0 || i >= n) {
-            PyErr_SetString(PyExc_IndexError, "index out of range");
+            PyErr_SetString(PyExc_IndexError,
+                            "TwoBitSequence index out of range");
             return NULL;
         }
         sprintf(buffer, "item %lu", i);
@@ -584,97 +478,60 @@ TwoBitFile_subscript(TwoBitFile* self, PyObject* item)
     }
     else {
         PyErr_Format(PyExc_TypeError,
-                     "indices must be integers, not %.200s",
-                     item->ob_type->tp_name);
+                     "TwoBitSequence indices must be integers, not %.200s",
+                     Py_TYPE(item)->tp_name);
         return NULL;
     }
 }
 
-static PyMappingMethods TwoBitFile_mapping = {
-    (lenfunc)TwoBitFile_length,           /* mp_length */
-    (binaryfunc)TwoBitFile_subscript,     /* mp_subscript */
+static PyMappingMethods TwoBitSequence_mapping = {
+    (lenfunc)TwoBitSequence_length,           /* mp_length */
+    (binaryfunc)TwoBitSequence_subscript,     /* mp_subscript */
 };
 
-static char TwoBitFile_cut__doc__[] =
-"myfile.cut(nclusters) -> array\n"
-"\n"
-"Divide the elements in a hierarchical clustering result myfile into\n"
-"clusters, and return an array with the number of the cluster to which each\n"
-"element was assigned. The number of clusters is given by nclusters.\n";
-
-static PyObject*
-TwoBitFile_cut(TwoBitFile* self, PyObject* args)
-{
-    int ok = -1;
-    int nclusters;
-    const int n = self->sequenceCount + 1;
-
-    if (!PyArg_ParseTuple(args, "i", &nclusters)) goto exit;
-    if (nclusters < 1) {
-        PyErr_SetString(PyExc_ValueError,
-                        "requested number of clusters should be positive");
-        goto exit;
-    }
-    if (nclusters > n) {
-        PyErr_SetString(PyExc_ValueError,
-                        "more clusters requested than items available");
-        goto exit;
-    }
-exit:
-    if (ok == -1) return NULL;
-    if (ok == 0) return PyErr_NoMemory();
-    Py_INCREF(Py_None);
-    return Py_None;
-}
-
-static PyMethodDef TwoBitFile_methods[] = {
-    {"cut", (PyCFunction)TwoBitFile_cut, METH_VARARGS, TwoBitFile_cut__doc__},
-    {NULL}  /* Sentinel */
-};
-
-static char TwoBitFile_doc[] =
-"TwoBitFile objects store the information in TwoBit files needed to read\n"
+static char TwoBitSequence_doc[] =
+"TwoBitSequence objects store the information in TwoBit files needed to read\n"
 "their sequence contents.";
 
-static PyTypeObject TwoBitFileType = {
+static PyTypeObject TwoBitSequenceType = {
     PyVarObject_HEAD_INIT(NULL, 0)
-    "_TwoBitIO.TwoBitFile",             /* tp_name */
-    sizeof(TwoBitFile),              /* tp_basicsize */
-    0,                           /* tp_itemsize */
-    (destructor)TwoBitFile_dealloc,  /* tp_dealloc */
-    0,                           /* tp_print */
-    0,                           /* tp_getattr */
-    0,                           /* tp_setattr */
-    0,                           /* tp_compare */
-    0,                           /* tp_repr */
-    0,                           /* tp_as_number */
-    0,                           /* tp_as_sequence */
-    &TwoBitFile_mapping,             /* tp_as_mapping */
-    0,                           /* tp_hash */
-    0,                           /* tp_call */
-    (reprfunc)TwoBitFile_str,        /* tp_str */
-    0,                           /* tp_getattro */
-    0,                           /* tp_setattro */
-    0,                           /* tp_as_buffer */
-    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,          /*tp_flags*/
-    TwoBitFile_doc,                  /* tp_doc */
-    0,                           /* tp_traverse */
-    0,                           /* tp_clear */
-    0,                           /* tp_richcompare */
-    0,                           /* tp_weaklistoffset */
-    0,                           /* tp_iter */
-    0,                           /* tp_iternext */
-    TwoBitFile_methods,              /* tp_methods */
-    NULL,                        /* tp_members */
-    TwoBitFile_getset,           /* tp_getset */
-    0,                           /* tp_base */
-    0,                           /* tp_dict */
-    0,                           /* tp_descr_get */
-    0,                           /* tp_descr_set */
-    0,                           /* tp_dictoffset */
-    0,                           /* tp_init */
-    0,                           /* tp_alloc */
-    (newfunc)TwoBitFile_new,         /* tp_new */
+    "_TwoBitIO.TwoBitSequence",                  /* tp_name */
+    sizeof(TwoBitSequence),                      /* tp_basicsize */
+    0,                                           /* tp_itemsize */
+    (destructor)TwoBitSequence_dealloc,          /* tp_dealloc */
+    0,                                           /* tp_print */
+    0,                                           /* tp_getattr */
+    0,                                           /* tp_setattr */
+    0,                                           /* tp_compare */
+    0,                                           /* tp_repr */
+    0,                                           /* tp_as_number */
+    0,                                           /* tp_as_sequence */
+    &TwoBitSequence_mapping,                     /* tp_as_mapping */
+    0,                                           /* tp_hash */
+    0,                                           /* tp_call */
+    (reprfunc)TwoBitSequence_str,                /* tp_str */
+    0,                                           /* tp_getattro */
+    0,                                           /* tp_setattro */
+    0,                                           /* tp_as_buffer */
+    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,    /* tp_flags*/
+    TwoBitSequence_doc,                          /* tp_doc */
+    0,                                           /* tp_traverse */
+    0,                                           /* tp_clear */
+    0,                                           /* tp_richcompare */
+    0,                                           /* tp_weaklistoffset */
+    0,                                           /* tp_iter */
+    0,                                           /* tp_iternext */
+    NULL,                                        /* tp_methods */
+    NULL,                                        /* tp_members */
+    NULL,                                        /* tp_getset */
+    0,                                           /* tp_base */
+    0,                                           /* tp_dict */
+    0,                                           /* tp_descr_get */
+    0,                                           /* tp_descr_set */
+    0,                                           /* tp_dictoffset */
+    0,                                           /* tp_init */
+    0,                                           /* tp_alloc */
+    (newfunc)TwoBitSequence_new,                 /* tp_new */
 };
 
 static PyObject*
@@ -840,14 +697,14 @@ PyInit__twoBitIO(void)
 {
     PyObject *module;
 
-    if (PyType_Ready(&TwoBitFileType) < 0)
+    if (PyType_Ready(&TwoBitSequenceType) < 0)
         return NULL;
 
     module = PyModule_Create(&moduledef);
     if (module == NULL) return NULL;
 
-    Py_INCREF(&TwoBitFileType);
-    PyModule_AddObject(module, "TwoBitFile", (PyObject*) &TwoBitFileType);
+    Py_INCREF(&TwoBitSequenceType);
+    PyModule_AddObject(module, "TwoBitSequence", (PyObject*) &TwoBitSequenceType);
 
     return module;
 }
