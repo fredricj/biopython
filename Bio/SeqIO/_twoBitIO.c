@@ -377,55 +377,6 @@ TwoBitSequence_dealloc(TwoBitSequence* self)
 }
 
 static PyObject*
-TwoBitSequence_new(PyTypeObject *type, PyObject* args, PyObject* keywords)
-{
-    TwoBitSequence* self;
-
-/*
-    uint32_t nBlockCount;
-    uint32_t* nBlockStarts;
-    uint32_t* nBlockSizes;
-    uint32_t maskBlockCount;
-*/
-    PyObject* fileobj;
-    int fd;
-    unsigned int offset;
-    unsigned int dnaSize;
-
-    static char* kwlist[] = {"handle",
-                             "descriptor",
-                             "offset",
-                             "dnaSize",
-                             NULL};
-
-    if (!PyArg_ParseTupleAndKeywords(args, keywords, "OiII", kwlist,
-                                     &fileobj, &fd, &offset, &dnaSize))
-        return NULL;
-
-    self = (TwoBitSequence *)type->tp_alloc(type, 0);
-    if (!self) return NULL;
-
-    self->fd = fd;
-
-    self->offset = offset;
-    if (self->offset != offset) {
-        PyErr_SetString(PyExc_OverflowError, "file offset too large");
-        return NULL;
-    }
-
-    self->dnaSize = dnaSize;
-    if (self->dnaSize != dnaSize) {
-        PyErr_SetString(PyExc_OverflowError, "sequence length too large");
-        return NULL;
-    }
-
-    Py_INCREF(fileobj);
-    self->fileobj = fileobj;
-
-    return (PyObject*)self;
-}
-
-static PyObject*
 TwoBitSequence_str(TwoBitSequence* self)
 {
     char buffer[128];
@@ -515,23 +466,6 @@ static PyTypeObject TwoBitSequenceType = {
     0,                                           /* tp_as_buffer */
     Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,    /* tp_flags*/
     TwoBitSequence_doc,                          /* tp_doc */
-    0,                                           /* tp_traverse */
-    0,                                           /* tp_clear */
-    0,                                           /* tp_richcompare */
-    0,                                           /* tp_weaklistoffset */
-    0,                                           /* tp_iter */
-    0,                                           /* tp_iternext */
-    NULL,                                        /* tp_methods */
-    NULL,                                        /* tp_members */
-    NULL,                                        /* tp_getset */
-    0,                                           /* tp_base */
-    0,                                           /* tp_dict */
-    0,                                           /* tp_descr_get */
-    0,                                           /* tp_descr_set */
-    0,                                           /* tp_dictoffset */
-    0,                                           /* tp_init */
-    0,                                           /* tp_alloc */
-    (newfunc)TwoBitSequence_new,                 /* tp_new */
 };
 
 static PyObject*
@@ -558,9 +492,11 @@ TwoBitIterator(PyObject* self, PyObject* args, PyObject* keywords)
     uint32_t* maskBlockSizes;
     char* sequence;
     PyObject* s;
+    PyObject* sequence_tuple;
     PyObject* tuple;
     PyObject* fileobj;
     int fd;
+    TwoBitSequence* tbs;
 
     static char* kwlist[] = {"handle",
                              "start",
@@ -605,6 +541,7 @@ TwoBitIterator(PyObject* self, PyObject* args, PyObject* keywords)
         name[nameSize] = '\0';  /* nameSize <= 255 */
         offsets[i] = offset;
     }
+    sequence_tuple = PyTuple_New(sequenceCount);
     tuple = PyTuple_New(sequenceCount);
     for (i = 0; i < sequenceCount; i++) {
         if (lseek(fd, offsets[i], SEEK_SET) == -1) {
@@ -659,7 +596,17 @@ TwoBitIterator(PyObject* self, PyObject* args, PyObject* keywords)
         applyMask(sequence, start, end,
                   maskBlockCount, maskBlockStarts, maskBlockSizes);
         s = PyUnicode_FromString(sequence);
-        PyTuple_SET_ITEM(tuple, i, s);
+        PyTuple_SET_ITEM(sequence_tuple, i, s);
+
+        tbs = (TwoBitSequence*)PyType_GenericAlloc(&TwoBitSequenceType, 0);
+        if (!tbs) return NULL;
+        Py_INCREF(fileobj);
+        tbs->fileobj = fileobj;
+        tbs->fd = fd;
+        tbs->offset = offset;
+        tbs->dnaSize = dnaSize;
+        PyTuple_SET_ITEM(tuple, i, (PyObject*)tbs);
+
         free(sequence);
         free(nBlockStarts);
         free(nBlockSizes);
@@ -667,7 +614,7 @@ TwoBitIterator(PyObject* self, PyObject* args, PyObject* keywords)
         free(maskBlockSizes);
     }
     free(offsets);
-    return Py_BuildValue("OO", isByteSwapped ? Py_True: Py_False, tuple);
+    return Py_BuildValue("OOO", isByteSwapped ? Py_True: Py_False, sequence_tuple, tuple);
 }
 
 static struct PyMethodDef _twoBitIO_methods[] = {

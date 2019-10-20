@@ -5,9 +5,10 @@ class TwoBitIterator:
 
     def __init__(self, handle, start, end):
         self.index = 0
-        isByteSwapped, sequences = _twoBitIO.TwoBitIterator(handle, start, end)
+        isByteSwapped, sequences, twobit_sequences = _twoBitIO.TwoBitIterator(handle, start, end)
         self.isByteSwapped = isByteSwapped
         self.sequences = sequences
+        self.twobit_sequences = twobit_sequences
 
     def __iter__(self):
         return self
