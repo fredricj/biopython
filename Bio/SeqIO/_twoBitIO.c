@@ -456,7 +456,10 @@ TwoBitSequence_subscript(TwoBitSequence* self, PyObject* item)
         obj = PyBytes_FromStringAndSize(NULL, 1);
         if (!obj) return NULL;
         sequence = PyBytes_AS_STRING(obj);
-        if (!extract(fd, i, i+1, sequence)) return NULL;
+        if (!extract(fd, i, i+1, sequence)) {
+            Py_DECREF(obj);
+            return NULL;
+        }
         applyNs(sequence, i, i+1, nBlockCount, nBlockStarts, nBlockSizes);
         applyMask(sequence, i, i+1,
                   maskBlockCount, maskBlockStarts, maskBlockSizes);
@@ -465,16 +468,51 @@ TwoBitSequence_subscript(TwoBitSequence* self, PyObject* item)
         Py_ssize_t start, stop, step, slicelength;
         if (PySlice_GetIndicesEx(item, n, &start, &stop, &step,
                                  &slicelength) == -1) return NULL;
-        if (slicelength == 0) obj = PyBytes_FromStringAndSize(NULL, 0);
-        else {
-            obj = PyBytes_FromStringAndSize(NULL, stop-start);
-            if (!obj) return NULL;
-            sequence = PyBytes_AS_STRING(obj);
-            if (!extract(fd, start, stop, sequence)) return NULL;
+        obj = PyBytes_FromStringAndSize(NULL, slicelength);
+        if (!obj) return NULL;
+        if (slicelength == 0) return obj;
+        sequence = PyBytes_AS_STRING(obj);
+        if (step == 1) {
+            if (!extract(fd, start, stop, sequence)) {
+                Py_DECREF(obj);
+                return NULL;
+            }
             applyNs(sequence, start, stop,
                     nBlockCount, nBlockStarts, nBlockSizes);
             applyMask(sequence, start, stop,
                     maskBlockCount, maskBlockStarts, maskBlockSizes);
+        }
+        else {
+            Py_ssize_t current, i;
+            Py_ssize_t full_start, full_stop;
+	    char* full_sequence;
+            if (start <= stop) {
+                full_start = start;
+                full_stop = stop;
+                current = 0; /* first position in sequence */
+            }
+            else {
+                full_start = stop + 1;
+                full_stop = start + 1;
+                current = start - stop - 1; /* last position in sequence */
+            }
+            full_sequence = PyMem_Malloc((full_stop-full_start)*sizeof(char));
+            if (!full_sequence) {
+                Py_DECREF(obj);
+                return NULL;
+            }
+            if (!extract(fd, full_start, full_stop, full_sequence)) {
+	        PyMem_Free(full_sequence);
+                Py_DECREF(obj);
+                return NULL;
+            }
+            applyNs(full_sequence, full_start, full_stop,
+                    nBlockCount, nBlockStarts, nBlockSizes);
+            applyMask(full_sequence, full_start, full_stop,
+                      maskBlockCount, maskBlockStarts, maskBlockSizes);
+            for (i = 0; i < slicelength; current += step, i++)
+                sequence[i] = full_sequence[current];
+            PyMem_Free(full_sequence);
         }
     }
     else {
