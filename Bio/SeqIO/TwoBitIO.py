@@ -30,9 +30,13 @@ class TwoBitIterator:
 
     def __init__(self, handle):
         self.index = 0
-        isByteSwapped, sequences = _twoBitIO.TwoBitIterator(handle)
+        isByteSwapped, names, sequences = _twoBitIO.TwoBitIterator(handle)
         self.isByteSwapped = isByteSwapped
-        self.sequences = [Seq(sequence) for sequence in sequences]
+        self.sequences = []
+        for name, sequence in zip(names, sequences):
+            sequence = Seq(sequence)
+            sequence.name = name
+            self.sequences.append(sequence)
 
     def __iter__(self):
         return self

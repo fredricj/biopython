@@ -8,18 +8,30 @@ from Bio.SeqRecord import SeqRecord
 from Bio import SeqIO
 from Bio.SeqIO import TwoBitIO
 
+path = "TwoBit/sequence.fa"
+handle = open(path)
+records = SeqIO.parse(handle, 'fasta')
+records = list(records)
+handle.close()
+
 path = "TwoBit/sequence.littleendian.2bit"
 handle = open(path)
-f = TwoBitIO.TwoBitIterator(handle)
-assert len(f) == 5
-assert f.isByteSwapped is False
+sequences = TwoBitIO.TwoBitIterator(handle)
+assert len(sequences) == 5
+assert sequences.isByteSwapped is False
+for sequence, record in zip(sequences, records):
+    assert sequence == str(record.seq)
+    assert sequence.name == record.id
 handle.close()
 
 path = "TwoBit/sequence.bigendian.2bit"
 handle = open(path)
-f = TwoBitIO.TwoBitIterator(handle)
-assert len(f) == 5
-assert f.isByteSwapped is True
+sequences = TwoBitIO.TwoBitIterator(handle)
+assert len(sequences) == 5
+assert sequences.isByteSwapped is True
+for sequence, record in zip(sequences, records):
+    assert sequence == str(record.seq)
+    assert sequence.name == record.id
 handle.close()
 
 
