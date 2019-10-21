@@ -7,14 +7,23 @@ class Seq:
         self.data = data
 
     def __getitem__(self, key):
-        return self.data[key].decode()
+        data = self.data[key]
+        return Seq(data)
 
     def __eq__(self, other):
-        if isinstance(other, str):
-            return (self[:] == other)
-        return NotImplemented
-
-
+        data = self.data
+        if not isinstance(data, bytes):
+            # then ask the data provider to provide bytes
+            data = data[:]
+            if not isinstance(data, bytes):
+                return NotImplemented
+        if isinstance(other, bytes):
+            pass
+        elif isinstance(other, str):
+            other = other.encode('ascii')
+        else:
+            return NotImplemented
+        return (data == other)
 
 
 class TwoBitIterator:

@@ -45,13 +45,7 @@ for length in range(1,21):
             for end in range(start+1, length+1):
                 print("Testing sequence length %d start %d end %d" % (length, start, end))
                 for i in range(10):
-                    seq1 = sequence[start:end]
-                    seq2 = record.seq[start:end]
-                    assert seq1 == seq2
+                    assert seq1[start:end] == seq2[start:end]
                     for step in range(1, end-start+1):
-                        seq1 = sequence[start:end:step]
-                        seq2 = record.seq[start:end:step]
-                        assert seq1 == seq2
-                        seq1 = sequence[end:start:-step]
-                        seq2 = record.seq[end:start:-step]
-                        assert seq1 == seq2
+                        assert seq1[start:end:step] == seq2[start:end:step]
+                        assert seq1[end:start:-step] == seq2[end:start:-step]
