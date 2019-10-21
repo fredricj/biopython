@@ -9,6 +9,13 @@ class Seq:
     def __getitem__(self, key):
         return self.data[key].decode()
 
+    def __eq__(self, other):
+        if isinstance(other, str):
+            return (self[:] == other)
+        return NotImplemented
+
+
+
 
 class TwoBitIterator:
 

@@ -38,6 +38,9 @@ for length in range(1,21):
     handle = open("test.2bit")
     sequences = TwoBitIO.TwoBitIterator(handle)
     for sequence, record in zip(sequences, records):
+        seq1 = sequence
+        seq2 = str(record.seq)
+        assert seq1 == seq2
         for start in range(length):
             for end in range(start+1, length+1):
                 print("Testing sequence length %d start %d end %d" % (length, start, end))
