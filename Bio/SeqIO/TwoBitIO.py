@@ -1,13 +1,22 @@
 from . import _twoBitIO
 
 
+class Seq:
+
+    def __init__(self, data):
+        self.data = data
+
+    def __getitem__(self, key):
+        return self.data[key].decode()
+
+
 class TwoBitIterator:
 
     def __init__(self, handle):
         self.index = 0
         isByteSwapped, sequences = _twoBitIO.TwoBitIterator(handle)
         self.isByteSwapped = isByteSwapped
-        self.sequences = sequences
+        self.sequences = [Seq(sequence) for sequence in sequences]
 
     def __iter__(self):
         return self

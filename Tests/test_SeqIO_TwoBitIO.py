@@ -22,9 +22,8 @@ assert len(f) == 5
 assert f.isByteSwapped is True
 handle.close()
 
-def perform_test(length=50, start=0, end=None, n=10):
-    if end is None:
-        end = length
+
+for length in range(1,21):
     records = []
     for i in range(10):
         nucleotides = ['ACGTNacgtn'[random.randint(0,9)] for i in range(length)]
@@ -39,21 +38,17 @@ def perform_test(length=50, start=0, end=None, n=10):
     handle = open("test.2bit")
     sequences = TwoBitIO.TwoBitIterator(handle)
     for sequence, record in zip(sequences, records):
-        seq1 = sequence[start:end].decode()
-        seq2 = record.seq[start:end]
-        assert seq1 == seq2
-        for step in range(1, end-start+1):
-            seq1 = sequence[start:end:step].decode()
-            seq2 = record.seq[start:end:step]
-            assert seq1 == seq2
-            seq1 = sequence[end:start:-step].decode()
-            seq2 = record.seq[end:start:-step]
-            assert seq1 == seq2
-    handle.close()
-
-for length in range(1,21):
-    for start in range(length):
-        for end in range(start+1, length+1):
-            print("Testing sequence length %d start %d end %d" % (length, start, end))
-            for i in range(10):
-                perform_test(length, start, end)
+        for start in range(length):
+            for end in range(start+1, length+1):
+                print("Testing sequence length %d start %d end %d" % (length, start, end))
+                for i in range(10):
+                    seq1 = sequence[start:end]
+                    seq2 = record.seq[start:end]
+                    assert seq1 == seq2
+                    for step in range(1, end-start+1):
+                        seq1 = sequence[start:end:step]
+                        seq2 = record.seq[start:end:step]
+                        assert seq1 == seq2
+                        seq1 = sequence[end:start:-step]
+                        seq2 = record.seq[end:start:-step]
+                        assert seq1 == seq2
