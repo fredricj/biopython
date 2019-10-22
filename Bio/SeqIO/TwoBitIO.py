@@ -25,6 +25,9 @@ class Seq:
             return NotImplemented
         return (data == other)
 
+    def __str__(self):
+        data = self.data
+        return data.decode('ascii')
 
 class TwoBitIterator:
 
@@ -32,6 +35,7 @@ class TwoBitIterator:
         self.index = 0
         isByteSwapped, names, sequences = _twoBitIO.TwoBitIterator(handle)
         self.isByteSwapped = isByteSwapped
+        self.names = names
         self.sequences = []
         for name, sequence in zip(names, sequences):
             sequence = Seq(sequence)
@@ -48,6 +52,17 @@ class TwoBitIterator:
         sequence = self.sequences[index]
         self.index += 1
         return sequence
+
+    def __getitem__(self, key):
+        try:
+            index = self.names.index(key)
+        except ValueError:
+            raise Keyerror(key) from None
+        sequence = self.sequences[index]
+        return sequence
+
+    def keys(self):
+        return self.names
 
     def __len__(self):
         return len(self.sequences)
