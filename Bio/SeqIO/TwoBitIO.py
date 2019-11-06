@@ -8,25 +8,73 @@ class Seq:
 
     def __getitem__(self, key):
         data = self.data[key]
-        return Seq(data)
+        if isinstance(key, int):
+            try:
+                letter = chr(data)
+            except TypeError:
+                letter = data.decode("ascii")
+            return letter
+        else:
+            return Seq(data)
+
+    def __hash__(self):
+        return hash(self.data[:])
+
+    def _convert_for_comparison(self, other):
+        data = self.data
+        if isinstance(data, bytes):
+            left = data
+        else:
+            # then ask the data provider to provide bytes
+            left = data[:]
+            if not isinstance(left, bytes):
+                raise NotImplementedError
+        if isinstance(other, Seq):
+            right = other.data[:]
+        elif isinstance(other, bytes):
+            right = other
+        elif isinstance(other, str):
+            right = other.encode('ascii')
+        else:
+            raise NotImplementedError
+        return left, right
 
     def __eq__(self, other):
-        data = self.data
-        if not isinstance(data, bytes):
-            # then ask the data provider to provide bytes
-            data = data[:]
-            if not isinstance(data, bytes):
-                return NotImplemented
-        if isinstance(other, bytes):
-            pass
-        elif isinstance(other, str):
-            other = other.encode('ascii')
+        left, right = self._convert_for_comparison(other)
+        return left == right
+
+    def __lt__(self, other):
+        left, right = self._convert_for_comparison(other)
+        return left < right
+
+    def __le__(self, other):
+        left, right = self._convert_for_comparison(other)
+        return left <= right
+
+    def __gt__(self, other):
+        left, right = self._convert_for_comparison(other)
+        return left > right
+
+    def __ge__(self, other):
+        left, right = self._convert_for_comparison(other)
+        return left >= right
+
+    def __len__(self):
+        return len(self.data)
+
+    def __repr__(self):
+        length = len(self.data)
+        if length > 60:
+            data = self.data[:54] + b'...' + self.data[-3:]
         else:
-            return NotImplemented
-        return (data == other)
+            data = self.data[:]
+        sequence = data.decode('ascii')
+        return 'Seq("%s")' % sequence
 
     def __str__(self):
-        data = self.data
+        # ask the data provider to generate bytes
+        data = self.data[:]
+        # then convert them to ascii
         return data.decode('ascii')
 
 class TwoBitIterator:
@@ -57,7 +105,7 @@ class TwoBitIterator:
         try:
             index = self.names.index(key)
         except ValueError:
-            raise Keyerror(key) from None
+            raise KeyError(key) from None
         sequence = self.sequences[index]
         return sequence
 
