@@ -360,7 +360,102 @@ applyMask(char sequence[], uint32_t start, uint32_t end,
     }
 }
 
-static char TwoBitIterator__doc__[] = "Lazy parser of a TwoBit file";
+typedef struct {
+    PyObject_HEAD
+} Seq;
+
+static PyObject*
+Seq_new(PyTypeObject *type, PyObject* args, PyObject* kwds)
+{
+    PyObject *arg = NULL;
+    Seq *self;
+
+    self = (Seq *)type->tp_alloc(type, 0);
+    if (!self) return NULL;
+
+    if (!PyArg_ParseTuple(args, "|O", &arg)) {
+        Py_DECREF(self);
+        return NULL;
+    }
+    return (PyObject *)self;
+}
+
+static void
+Seq_dealloc(Seq* self)
+{
+    Py_TYPE(self)->tp_free((PyObject*)self);
+}
+
+static PyObject*
+Seq_str(Seq* self)
+{
+    PyObject *obj;
+    Py_ssize_t size = 0;
+    obj = PyUnicode_New(size, 255);
+    if (!obj) return NULL;
+    return obj;
+}
+
+static int
+Seq_length(Seq *self)
+{
+    return 0;
+}
+
+static PyObject*
+Seq_subscript(Seq* self, PyObject* item)
+{
+    return NULL;
+}
+
+static PyMappingMethods Seq_mapping = {
+    (lenfunc)Seq_length,           /* mp_length */
+    (binaryfunc)Seq_subscript,     /* mp_subscript */
+};
+
+static char Seq_doc[] =
+"Seq objects store biological sequences.";
+
+static PyTypeObject SeqType = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    "_TwoBitIO.Seq",                             /* tp_name */
+    sizeof(Seq),                                 /* tp_basicsize */
+    0,                                           /* tp_itemsize */
+    (destructor)Seq_dealloc,                     /* tp_dealloc */
+    0,                                           /* tp_print */
+    0,                                           /* tp_getattr */
+    0,                                           /* tp_setattr */
+    0,                                           /* tp_compare */
+    0,                                           /* tp_repr */
+    0,                                           /* tp_as_number */
+    0,                                           /* tp_as_sequence */
+    &Seq_mapping,                                /* tp_as_mapping */
+    0,                                           /* tp_hash */
+    0,                                           /* tp_call */
+    (reprfunc)Seq_str,                           /* tp_str */
+    0,                                           /* tp_getattro */
+    0,                                           /* tp_setattro */
+    0,                                           /* tp_as_buffer */
+    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,    /* tp_flags*/
+    Seq_doc,                                     /* tp_doc */
+    0,                                           /* tp_traverse */
+    0,                                           /* tp_clear */
+    0,                                           /* tp_richcompare */
+    0,                                           /* tp_weaklistoffset */
+    0,                                           /* tp_iter */
+    0,                                           /* tp_iternext */
+    0,                                           /* tp_methods */
+    0,                                           /* tp_members */
+    0,                                           /* tp_getset */
+    0,                                           /* tp_base */
+    0,                                           /* tp_dict */
+    0,                                           /* tp_descr_get */
+    0,                                           /* tp_descr_set */
+    0,                                           /* tp_dictoffset */
+    0,                                           /* tp_init */
+    0,                                           /* tp_alloc */
+    (newfunc)Seq_new,                            /* tp_new */
+};
 
 typedef struct {
     PyObject_HEAD
@@ -558,6 +653,8 @@ static PyTypeObject TwoBitSequenceType = {
     TwoBitSequence_doc,                          /* tp_doc */
 };
 
+static char TwoBitIterator__doc__[] = "Lazy parser of a TwoBit file";
+
 static PyObject*
 TwoBitIterator(PyObject* self, PyObject* args, PyObject* keywords)
 {
@@ -741,13 +838,19 @@ PyInit__twoBitIO(void)
 {
     PyObject *module;
 
+    if (PyType_Ready(&SeqType) < 0)
+        return NULL;
+
     if (PyType_Ready(&TwoBitSequenceType) < 0)
         return NULL;
 
     module = PyModule_Create(&moduledef);
     if (module == NULL) return NULL;
 
+    Py_INCREF(&SeqType);
     Py_INCREF(&TwoBitSequenceType);
+
+    PyModule_AddObject(module, "Seq", (PyObject*) &SeqType);
     PyModule_AddObject(module, "TwoBitSequence", (PyObject*) &TwoBitSequenceType);
 
     return module;
