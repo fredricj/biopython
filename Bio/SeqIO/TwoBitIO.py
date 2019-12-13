@@ -1,10 +1,12 @@
 from . import _twoBitIO
 
 
-class Seq:
+class Seq(_twoBitIO.Seq):
 
-    def __init__(self, data):
+    def __new__(cls, data):
+        self = super().__new__(cls, data)
         self.data = data
+        return self
 
     def __getitem__(self, key):
         data = self.data[key]
@@ -58,9 +60,6 @@ class Seq:
     def __ge__(self, other):
         left, right = self._convert_for_comparison(other)
         return left >= right
-
-    def __len__(self):
-        return len(self.data)
 
     def __repr__(self):
         length = len(self.data)

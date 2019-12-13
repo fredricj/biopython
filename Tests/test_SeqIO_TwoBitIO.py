@@ -22,6 +22,7 @@ assert sequences.isByteSwapped is False
 for sequence, record in zip(sequences, records):
     assert sequence == str(record.seq)
     assert sequence.name == record.id
+    assert len(sequence) == len(record.seq)
 handle.close()
 
 path = "TwoBit/sequence.bigendian.2bit"
@@ -32,8 +33,8 @@ assert sequences.isByteSwapped is True
 for sequence, record in zip(sequences, records):
     assert sequence == str(record.seq)
     assert sequence.name == record.id
+    assert len(sequence) == len(record.seq)
 handle.close()
-
 
 for length in range(1,21):
     records = []

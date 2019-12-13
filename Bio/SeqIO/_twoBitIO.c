@@ -362,6 +362,7 @@ applyMask(char sequence[], uint32_t start, uint32_t end,
 
 typedef struct {
     PyObject_HEAD
+    Py_ssize_t length;
 } Seq;
 
 static PyObject*
@@ -369,14 +370,35 @@ Seq_new(PyTypeObject *type, PyObject* args, PyObject* kwds)
 {
     PyObject *arg = NULL;
     Seq *self;
+    Py_ssize_t length;
+
+    if (!PyArg_ParseTuple(args, "O", &arg)) return NULL;
+
+    if (PyUnicode_Check(arg)) {
+        if (PyUnicode_READY(arg) < 0) return NULL;
+        if (!PyUnicode_IS_COMPACT_ASCII(arg)) {
+            PyErr_SetString(PyExc_ValueError, "strings should be ASCII");
+            return NULL;
+        }
+        length = PyUnicode_GET_LENGTH(arg);
+    }
+    else if (PyObject_CheckBuffer(arg)) {
+        length = PySequence_Length(arg);
+    }
+    else {
+        /* Check if the object provides the sequence or mapping protocol,
+         * so we can use PyObject_GetItem to get the sequence data. The
+         * actual sequence data content will have to be checked after we
+         * call PyObject_GetItem.
+         */
+        length = PyObject_Length(arg);
+        if (length < 0) return NULL;
+    }
 
     self = (Seq *)type->tp_alloc(type, 0);
     if (!self) return NULL;
+    self->length = length;
 
-    if (!PyArg_ParseTuple(args, "|O", &arg)) {
-        Py_DECREF(self);
-        return NULL;
-    }
     return (PyObject *)self;
 }
 
@@ -396,10 +418,9 @@ Seq_str(Seq* self)
     return obj;
 }
 
-static int
-Seq_length(Seq *self)
+static Py_ssize_t Seq_length(Seq *self)
 {
-    return 0;
+    return self->length;
 }
 
 static PyObject*
@@ -532,6 +553,7 @@ TwoBitSequence_subscript(TwoBitSequence* self, PyObject* item)
     const uint32_t maskBlockCount = self->maskBlockCount;
     const uint32_t* const maskBlockStarts = self->maskBlockStarts;
     const uint32_t* const maskBlockSizes = self->maskBlockSizes;
+
     PyObject* obj;
     if (lseek(fd, self->offset, SEEK_SET) == -1) {
         PyErr_Format(PyExc_RuntimeError,
