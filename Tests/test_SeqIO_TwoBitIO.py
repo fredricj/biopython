@@ -21,6 +21,7 @@ assert len(sequences) == 5
 assert sequences.isByteSwapped is False
 for sequence, record in zip(sequences, records):
     assert sequence == str(record.seq)
+    assert sequence == str(sequence)
     assert sequence.name == record.id
     assert len(sequence) == len(record.seq)
 handle.close()
@@ -32,6 +33,7 @@ assert len(sequences) == 5
 assert sequences.isByteSwapped is True
 for sequence, record in zip(sequences, records):
     assert sequence == str(record.seq)
+    assert sequence == str(sequence)
     assert sequence.name == record.id
     assert len(sequence) == len(record.seq)
 handle.close()

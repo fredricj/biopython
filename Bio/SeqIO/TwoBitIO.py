@@ -70,11 +70,6 @@ class Seq(_twoBitIO.Seq):
         sequence = data.decode('ascii')
         return 'Seq("%s")' % sequence
 
-    def __str__(self):
-        # ask the data provider to generate bytes
-        data = self.data[:]
-        # then convert them to ascii
-        return data.decode('ascii')
 
 class TwoBitIterator:
 

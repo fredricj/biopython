@@ -362,28 +362,38 @@ applyMask(char sequence[], uint32_t start, uint32_t end,
 
 typedef struct {
     PyObject_HEAD
-    Py_ssize_t length;
+    Py_buffer data;
 } Seq;
 
 static PyObject*
-Seq_new(PyTypeObject *type, PyObject* args, PyObject* kwds)
+Seq_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 {
-    PyObject *arg = NULL;
     Seq *self;
-    Py_ssize_t length;
+    PyObject *arg = NULL;
+    Py_buffer data;
 
     if (!PyArg_ParseTuple(args, "O", &arg)) return NULL;
 
-    if (PyUnicode_Check(arg)) {
+    if (PyObject_CheckBuffer(arg)) {
+        if (PyObject_GetBuffer(arg, &data, PyBUF_FORMAT) < 0) return NULL;
+        if (strcmp(data.format, "B") != 0) {
+            PyBuffer_Release(&data);
+            PyErr_SetString(PyExc_ValueError,
+                            "buffers should contain unsigned char");
+            return NULL;
+        }
+    }
+    else if (PyUnicode_Check(arg)) {
         if (PyUnicode_READY(arg) < 0) return NULL;
         if (!PyUnicode_IS_COMPACT_ASCII(arg)) {
             PyErr_SetString(PyExc_ValueError, "strings should be ASCII");
             return NULL;
         }
-        length = PyUnicode_GET_LENGTH(arg);
-    }
-    else if (PyObject_CheckBuffer(arg)) {
-        length = PySequence_Length(arg);
+        Py_INCREF(arg);
+        data.len = PyUnicode_GET_LENGTH(arg);
+        data.buf = PyUnicode_DATA(arg);
+        data.obj = arg;
+        data.format = NULL;
     }
     else {
         /* Check if the object provides the sequence or mapping protocol,
@@ -391,13 +401,18 @@ Seq_new(PyTypeObject *type, PyObject* args, PyObject* kwds)
          * actual sequence data content will have to be checked after we
          * call PyObject_GetItem.
          */
-        length = PyObject_Length(arg);
-        if (length < 0) return NULL;
+        data.len = PyObject_Length(arg);
+        if (data.len < 0) return NULL;
+        Py_INCREF(arg);
+        data.buf = NULL;
+        data.obj = arg;
+        data.format = NULL;
     }
 
     self = (Seq *)type->tp_alloc(type, 0);
     if (!self) return NULL;
-    self->length = length;
+
+    self->data = data;
 
     return (PyObject *)self;
 }
@@ -405,22 +420,38 @@ Seq_new(PyTypeObject *type, PyObject* args, PyObject* kwds)
 static void
 Seq_dealloc(Seq* self)
 {
+    if (self->data.format) /* buffer */ PyBuffer_Release(&self->data);
+    else Py_DECREF(self->data.obj);
     Py_TYPE(self)->tp_free((PyObject*)self);
 }
 
-static PyObject*
-Seq_str(Seq* self)
+static PyObject *Seq_str(Seq *self)
 {
-    PyObject *obj;
-    Py_ssize_t size = 0;
-    obj = PyUnicode_New(size, 255);
-    if (!obj) return NULL;
-    return obj;
+    PyObject *value = NULL;
+    const char *buffer = self->data.buf;
+    if (buffer) value = PyUnicode_FromStringAndSize(buffer, self->data.len);
+    else {
+        PyObject *data;
+        PyObject *slice;
+        PyObject *stop = PyLong_FromSsize_t(self->data.len);
+        if (!stop) return NULL;
+        slice = PySlice_New(NULL, stop, NULL);
+        Py_DECREF(stop);
+        if (!slice) return NULL;
+        data = PyObject_GetItem(self->data.obj, slice);
+        Py_DECREF(slice);
+        if (PyBytes_Check(data))
+            value = PyUnicode_FromEncodedObject(data, NULL, NULL);
+        else
+            PyErr_SetString(PyExc_ValueError, "expected a bytes object");
+        Py_DECREF(data);
+    }
+    return value;
 }
 
 static Py_ssize_t Seq_length(Seq *self)
 {
-    return self->length;
+    return self->data.len;
 }
 
 static PyObject*
