@@ -425,6 +425,74 @@ Seq_dealloc(Seq* self)
     Py_TYPE(self)->tp_free((PyObject*)self);
 }
 
+static PyObject *Seq_repr(Seq* self)
+{
+    char string[67];
+    char* p = string;
+    Py_ssize_t length = self->data.len;
+    const char *buffer = self->data.buf;
+    p += sprintf(string, "Seq(\"");
+    if (buffer) {
+        if (length > 60) {
+            p = memcpy(p, buffer, 54) + 54;
+            p += sprintf(p, "...");
+            p = memcpy(p, buffer+length-3, 3) + 3;
+        }
+        else
+            p = memcpy(p, buffer, length) + length;
+    }
+    else {
+        PyObject *data;
+        PyObject *slice;
+        if (length > 60) {
+            PyObject *index;
+            index = PyLong_FromSsize_t(54);
+            if (!index) return NULL;
+            slice = PySlice_New(NULL, index, NULL);
+            Py_DECREF(index);
+            if (!slice) return NULL;
+            data = PyObject_GetItem(self->data.obj, slice);
+            Py_DECREF(slice);
+            if (!PyBytes_Check(data)) {
+                PyErr_SetString(PyExc_ValueError, "expected a bytes object");
+                Py_DECREF(data);
+                return NULL;
+            }
+            p = memcpy(p, PyBytes_AS_STRING(data), 54) + 54;
+            p += sprintf(p, "...");
+            index = PyLong_FromSsize_t(-3);
+            if (!index) return NULL;
+            slice = PySlice_New(index, NULL, NULL);
+            Py_DECREF(index);
+            if (!slice) return NULL;
+            data = PyObject_GetItem(self->data.obj, slice);
+            Py_DECREF(slice);
+            if (!PyBytes_Check(data)) {
+                PyErr_SetString(PyExc_ValueError, "expected a bytes object");
+                Py_DECREF(data);
+                return NULL;
+            }
+            p = memcpy(p+57, PyBytes_AS_STRING(data), 3) + 3;
+            Py_DECREF(data);
+        } else {
+            slice = PySlice_New(NULL, NULL, NULL);
+            if (!slice) return NULL;
+            data = PyObject_GetItem(self->data.obj, slice);
+            Py_DECREF(slice);
+            if (!PyBytes_Check(data)) {
+                PyErr_SetString(PyExc_ValueError, "expected a bytes object");
+                Py_DECREF(data);
+                return NULL;
+            }
+            p = memcpy(p, PyBytes_AS_STRING(data), length) + length;
+            Py_DECREF(data);
+        }
+    }
+    p += sprintf(p, "\")");
+    length = p - string;
+    return PyUnicode_FromStringAndSize(string, length);
+}
+
 static PyObject *Seq_str(Seq *self)
 {
     PyObject *value = NULL;
@@ -433,10 +501,7 @@ static PyObject *Seq_str(Seq *self)
     else {
         PyObject *data;
         PyObject *slice;
-        PyObject *stop = PyLong_FromSsize_t(self->data.len);
-        if (!stop) return NULL;
-        slice = PySlice_New(NULL, stop, NULL);
-        Py_DECREF(stop);
+        slice = PySlice_New(NULL, NULL, NULL);
         if (!slice) return NULL;
         data = PyObject_GetItem(self->data.obj, slice);
         Py_DECREF(slice);
@@ -478,7 +543,7 @@ static PyTypeObject SeqType = {
     0,                                           /* tp_getattr */
     0,                                           /* tp_setattr */
     0,                                           /* tp_compare */
-    0,                                           /* tp_repr */
+    (reprfunc)Seq_repr,                          /* tp_repr */
     0,                                           /* tp_as_number */
     0,                                           /* tp_as_sequence */
     &Seq_mapping,                                /* tp_as_mapping */

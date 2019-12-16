@@ -61,15 +61,6 @@ class Seq(_twoBitIO.Seq):
         left, right = self._convert_for_comparison(other)
         return left >= right
 
-    def __repr__(self):
-        length = len(self.data)
-        if length > 60:
-            data = self.data[:54] + b'...' + self.data[-3:]
-        else:
-            data = self.data[:]
-        sequence = data.decode('ascii')
-        return 'Seq("%s")' % sequence
-
 
 class TwoBitIterator:
 
