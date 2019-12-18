@@ -8,58 +8,8 @@ class Seq(_twoBitIO.Seq):
         self.data = data
         return self
 
-    def __getitem__(self, key):
-        data = self.data[key]
-        if isinstance(key, int):
-            try:
-                letter = chr(data)
-            except TypeError:
-                letter = data.decode("ascii")
-            return letter
-        else:
-            return Seq(data)
-
     def __hash__(self):
         return hash(self.data[:])
-
-    def _convert_for_comparison(self, other):
-        data = self.data
-        if isinstance(data, bytes):
-            left = data
-        else:
-            # then ask the data provider to provide bytes
-            left = data[:]
-            if not isinstance(left, bytes):
-                raise NotImplementedError
-        if isinstance(other, Seq):
-            right = other.data[:]
-        elif isinstance(other, bytes):
-            right = other
-        elif isinstance(other, str):
-            right = other.encode('ascii')
-        else:
-            raise NotImplementedError
-        return left, right
-
-    def __eq__(self, other):
-        left, right = self._convert_for_comparison(other)
-        return left == right
-
-    def __lt__(self, other):
-        left, right = self._convert_for_comparison(other)
-        return left < right
-
-    def __le__(self, other):
-        left, right = self._convert_for_comparison(other)
-        return left <= right
-
-    def __gt__(self, other):
-        left, right = self._convert_for_comparison(other)
-        return left > right
-
-    def __ge__(self, other):
-        left, right = self._convert_for_comparison(other)
-        return left >= right
 
 
 class TwoBitIterator:

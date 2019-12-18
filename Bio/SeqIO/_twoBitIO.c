@@ -6,6 +6,8 @@
     x = (t >> 24) | ((t & 0x00FF0000) >> 8) | ((t & 0x0000FF00) << 8) | (t << 24); \
 }
 
+static PyTypeObject SeqType;
+
 static const char bases[][4] = {"TTTT",  /* 00 00 00 00 */
                                 "TTTC",  /* 00 00 00 01 */
                                 "TTTA",  /* 00 00 00 10 */
@@ -520,9 +522,63 @@ static Py_ssize_t Seq_length(Seq *self)
 }
 
 static PyObject*
-Seq_subscript(Seq* self, PyObject* item)
+Seq_subscript(Seq* self, PyObject* key)
 {
-    return NULL;
+    const char *buffer = self->data.buf;
+    PyObject *object = self->data.obj;
+    PyObject* result = NULL;
+    if (!buffer) {
+        PyObject* data = PyObject_GetItem(object, key);
+        if (data) {
+            if (PyBytes_Check(data)) {
+                if (PyIndex_Check(key)) {
+                    char* string = PyBytes_AS_STRING(data);
+	            result = PyUnicode_FromStringAndSize(string, 1);
+                }
+                else {
+                    Py_buffer buf;
+                    if (PyObject_GetBuffer(data, &buf, PyBUF_SIMPLE) == 0) {
+                        result = SeqType.tp_alloc(&SeqType, 0);
+                        if (result) {
+                            Seq *seq = (Seq *)result;
+                            seq->data = buf;
+                        }
+                        else
+                            PyBuffer_Release(&buf);
+                    }
+                }
+            }
+            else
+                PyErr_SetString(PyExc_ValueError, "expected a bytes object");
+            Py_DECREF(data);
+        }
+    }
+    else if (PyIndex_Check(key)) {
+        const Py_ssize_t index = PyNumber_AsSsize_t(key, PyExc_IndexError);
+        if (index == -1 && PyErr_Occurred())
+            return NULL;
+	result = PyUnicode_FromStringAndSize(&buffer[index], 1);
+    }
+    else if (PySlice_Check(key)) {
+        const Py_ssize_t length = self->data.len;
+        Py_ssize_t start;
+        Py_ssize_t stop;
+        Py_ssize_t step;
+        Py_ssize_t slicelength;
+        Seq *seq;
+        if (PySlice_GetIndicesEx(key, length, &start, &stop, &step,
+                                 &slicelength) == 0) {
+            seq = (Seq *) SeqType.tp_alloc(&SeqType, 0);
+            if (seq) {
+                seq->data.len = slicelength;
+                seq->data.buf = self->data.buf + start;
+                seq->data.obj = (PyObject*)self;
+                seq->data.format = NULL;
+                result = (PyObject*)seq;
+            }
+        }
+    }
+    return result;
 }
 
 static PyMappingMethods Seq_mapping = {

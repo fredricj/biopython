@@ -20,8 +20,7 @@ sequences = TwoBitIO.TwoBitIterator(handle)
 assert len(sequences) == 5
 assert sequences.isByteSwapped is False
 for sequence, record in zip(sequences, records):
-    assert sequence == str(record.seq)
-    assert sequence == str(sequence)
+    assert str(sequence) == str(record.seq)
     assert sequence.name == record.id
     assert len(sequence) == len(record.seq)
 handle.close()
@@ -32,8 +31,7 @@ sequences = TwoBitIO.TwoBitIterator(handle)
 assert len(sequences) == 5
 assert sequences.isByteSwapped is True
 for sequence, record in zip(sequences, records):
-    assert sequence == str(record.seq)
-    assert sequence == str(sequence)
+    assert str(sequence) == str(record.seq)
     assert sequence.name == record.id
     assert len(sequence) == len(record.seq)
 handle.close()
@@ -55,12 +53,12 @@ for length in range(1,21):
     for sequence, record in zip(sequences, records):
         seq1 = sequence
         seq2 = str(record.seq)
-        assert seq1 == seq2
+        assert str(seq1) == str(seq2)
         for start in range(length):
             for end in range(start+1, length+1):
                 print("Testing sequence length %d start %d end %d" % (length, start, end))
                 for i in range(10):
-                    assert seq1[start:end] == seq2[start:end]
+                    assert str(seq1[start:end]) == str(seq2[start:end])
                     for step in range(1, end-start+1):
-                        assert seq1[start:end:step] == seq2[start:end:step]
-                        assert seq1[end:start:-step] == seq2[end:start:-step]
+                        assert str(seq1[start:end:step]) == str(seq2[start:end:step])
+                        assert str(seq1[end:start:-step]) == str(seq2[end:start:-step])
