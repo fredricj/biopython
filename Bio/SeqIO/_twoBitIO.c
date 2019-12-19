@@ -443,71 +443,69 @@ Seq_dealloc(Seq* self)
     Py_TYPE(self)->tp_free((PyObject*)self);
 }
 
+static PyObject*
+get_slice(PyObject *object, Py_ssize_t start, Py_ssize_t end)
+{
+    PyObject *index;
+    PyObject *data;
+    PyObject *slice;
+    if (start == 0 && end > 0) {
+        index = PyLong_FromSsize_t(end);
+        if (!index) return NULL;
+        slice = PySlice_New(NULL, index, NULL);
+    }
+    else if (start >= 0 && end == -1) {
+        index = PyLong_FromSsize_t(start);
+        if (!index) return NULL;
+        slice = PySlice_New(index, NULL, NULL);
+    }
+    else return NULL;
+    Py_DECREF(index);
+    if (!slice) return NULL;
+    data = PyObject_GetItem(object, slice);
+    Py_DECREF(slice);
+    if (!data) return NULL;
+    if (!PyBytes_Check(data)) {
+        PyErr_SetString(PyExc_ValueError, "expected a bytes object");
+        Py_DECREF(data);
+        return NULL;
+    }
+    return data;
+}
+
 static PyObject *Seq_repr(Seq* self)
 {
-    char string[67];
-    char* p = string;
+    char string[68];
     Py_ssize_t length = self->data.len;
-    const char *buffer = self->data.buf;
-    p += sprintf(string, "Seq(\"");
-    if (buffer) {
-        if (length > 60) {
-            p = memcpy(p, buffer, 54) + 54;
-            p += sprintf(p, "...");
-            p = memcpy(p, buffer+length-3, 3) + 3;
-        }
-        else
-            p = memcpy(p, buffer, length) + length;
+    const char *prefix = self->data.buf;
+    const char *suffix = NULL;
+    PyObject *data_prefix = NULL;
+    PyObject *data_suffix = NULL;
+    if (prefix) {
+        if (length > 60) suffix = prefix+length-3;
     }
     else {
-        PyObject *data;
-        PyObject *slice;
         if (length > 60) {
-            PyObject *index;
-            index = PyLong_FromSsize_t(54);
-            if (!index) return NULL;
-            slice = PySlice_New(NULL, index, NULL);
-            Py_DECREF(index);
-            if (!slice) return NULL;
-            data = PyObject_GetItem(self->data.internal, slice);
-            Py_DECREF(slice);
-            if (!PyBytes_Check(data)) {
-                PyErr_SetString(PyExc_ValueError, "expected a bytes object");
-                Py_DECREF(data);
-                return NULL;
-            }
-            p = memcpy(p, PyBytes_AS_STRING(data), 54) + 54;
-            p += sprintf(p, "...");
-            index = PyLong_FromSsize_t(-3);
-            if (!index) return NULL;
-            slice = PySlice_New(index, NULL, NULL);
-            Py_DECREF(index);
-            if (!slice) return NULL;
-            data = PyObject_GetItem(self->data.internal, slice);
-            Py_DECREF(slice);
-            if (!PyBytes_Check(data)) {
-                PyErr_SetString(PyExc_ValueError, "expected a bytes object");
-                Py_DECREF(data);
-                return NULL;
-            }
-            p = memcpy(p+57, PyBytes_AS_STRING(data), 3) + 3;
-            Py_DECREF(data);
+            data_prefix = get_slice(self->data.internal, 0, 54);
+            if (!data_prefix) return NULL;
+            prefix = PyBytes_AS_STRING(data_prefix);
+            data_suffix = get_slice(self->data.internal, length-3, -1);
+            if (!data_suffix) return NULL;
+            suffix = PyBytes_AS_STRING(data_suffix);
         } else {
-            slice = PySlice_New(NULL, NULL, NULL);
-            if (!slice) return NULL;
-            data = PyObject_GetItem(self->data.internal, slice);
-            Py_DECREF(slice);
-            if (!PyBytes_Check(data)) {
-                PyErr_SetString(PyExc_ValueError, "expected a bytes object");
-                Py_DECREF(data);
-                return NULL;
-            }
-            p = memcpy(p, PyBytes_AS_STRING(data), length) + length;
-            Py_DECREF(data);
+            data_prefix = get_slice(self->data.internal, 0, -1);
+            if (!data_prefix) return NULL;
+            prefix = PyBytes_AS_STRING(data_prefix);
         }
     }
-    p += sprintf(p, "\")");
-    length = p - string;
+    if (suffix) {
+        length = sprintf(string, "Seq(\"%.54s...%.3s\")", prefix, suffix);
+        Py_XDECREF(data_suffix);
+    }
+    else {
+        length = sprintf(string, "Seq(\"%s\")", prefix);
+    }
+    Py_XDECREF(data_prefix);
     return PyUnicode_FromStringAndSize(string, length);
 }
 
