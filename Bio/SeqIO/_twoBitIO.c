@@ -392,28 +392,44 @@ Seq_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
             return NULL;
         }
         Py_INCREF(arg);
-        data.len = PyUnicode_GET_LENGTH(arg);
         data.buf = PyUnicode_DATA(arg);
-        data.obj = arg;
+        data.obj = NULL;
+        data.len = PyUnicode_GET_LENGTH(arg);
+        data.readonly = 1;
+        data.itemsize = sizeof(char);
         data.format = NULL;
+        data.ndim = 1;
+        data.shape = NULL;
+        data.strides = NULL;
+        data.suboffsets = NULL;
+        data.internal = arg;
     }
     else {
-        /* Check if the object provides the sequence or mapping protocol,
-         * so we can use PyObject_GetItem to get the sequence data. The
-         * actual sequence data content will have to be checked after we
-         * call PyObject_GetItem.
+        /* PyObject_Length returns -1 if the object does not provides the
+         * sequence protocol or the mapping protocol. If it does support
+         * either of these protocols, we can use PyObject_GetItem to get the
+         * sequence data. The content of the sequence data will have to be
+         * checked after we call PyObject_GetItem.
          */
         data.len = PyObject_Length(arg);
         if (data.len < 0) return NULL;
         Py_INCREF(arg);
         data.buf = NULL;
-        data.obj = arg;
+        data.obj = NULL;
+        data.readonly = 1;
+        data.itemsize = sizeof(char);
         data.format = NULL;
+        data.ndim = 1;
+        data.shape = NULL;
+        data.strides = NULL;
+        data.suboffsets = NULL;
+        data.internal = arg;
     }
 
     self = (Seq *)type->tp_alloc(type, 0);
     if (!self) return NULL;
 
+    if (data.obj == NULL) data.obj = (PyObject *)self;
     self->data = data;
 
     return (PyObject *)self;
@@ -422,8 +438,8 @@ Seq_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 static void
 Seq_dealloc(Seq* self)
 {
-    if (self->data.format) /* buffer */ PyBuffer_Release(&self->data);
-    else Py_DECREF(self->data.obj);
+    if (self->data.obj == (PyObject *)self) Py_DECREF(self->data.internal);
+    else PyBuffer_Release(&self->data);
     Py_TYPE(self)->tp_free((PyObject*)self);
 }
 
@@ -453,7 +469,7 @@ static PyObject *Seq_repr(Seq* self)
             slice = PySlice_New(NULL, index, NULL);
             Py_DECREF(index);
             if (!slice) return NULL;
-            data = PyObject_GetItem(self->data.obj, slice);
+            data = PyObject_GetItem(self->data.internal, slice);
             Py_DECREF(slice);
             if (!PyBytes_Check(data)) {
                 PyErr_SetString(PyExc_ValueError, "expected a bytes object");
@@ -467,7 +483,7 @@ static PyObject *Seq_repr(Seq* self)
             slice = PySlice_New(index, NULL, NULL);
             Py_DECREF(index);
             if (!slice) return NULL;
-            data = PyObject_GetItem(self->data.obj, slice);
+            data = PyObject_GetItem(self->data.internal, slice);
             Py_DECREF(slice);
             if (!PyBytes_Check(data)) {
                 PyErr_SetString(PyExc_ValueError, "expected a bytes object");
@@ -479,7 +495,7 @@ static PyObject *Seq_repr(Seq* self)
         } else {
             slice = PySlice_New(NULL, NULL, NULL);
             if (!slice) return NULL;
-            data = PyObject_GetItem(self->data.obj, slice);
+            data = PyObject_GetItem(self->data.internal, slice);
             Py_DECREF(slice);
             if (!PyBytes_Check(data)) {
                 PyErr_SetString(PyExc_ValueError, "expected a bytes object");
@@ -505,7 +521,7 @@ static PyObject *Seq_str(Seq *self)
         PyObject *slice;
         slice = PySlice_New(NULL, NULL, NULL);
         if (!slice) return NULL;
-        data = PyObject_GetItem(self->data.obj, slice);
+        data = PyObject_GetItem(self->data.internal, slice);
         Py_DECREF(slice);
         if (PyBytes_Check(data))
             value = PyUnicode_FromEncodedObject(data, NULL, NULL);
@@ -525,10 +541,10 @@ static PyObject*
 Seq_subscript(Seq* self, PyObject* key)
 {
     const char *buffer = self->data.buf;
-    PyObject *object = self->data.obj;
     PyObject* result = NULL;
     if (!buffer) {
-        PyObject* data = PyObject_GetItem(object, key);
+        PyObject *object = self->data.internal;
+        PyObject *data = PyObject_GetItem(object, key);
         if (data) {
             if (PyBytes_Check(data)) {
                 if (PyIndex_Check(key)) {
