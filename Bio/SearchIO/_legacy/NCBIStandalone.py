@@ -26,9 +26,10 @@ from __future__ import print_function
 
 import sys
 import re
+from io import StringIO
 
-from Bio._py3k import StringIO
 from Bio.SearchIO._legacy.ParserSupport import (
+    UndoHandle,
     AbstractParser,
     AbstractConsumer,
     read_and_call,
@@ -39,7 +40,6 @@ from Bio.SearchIO._legacy.ParserSupport import (
     safe_peekline,
     safe_readline,
 )
-from Bio import File
 from Bio.Blast import Record
 
 from Bio import BiopythonWarning
@@ -104,10 +104,10 @@ class _Scanner(object):
          - consumer is a Consumer object that will receive events as the
            report is scanned.
         """
-        if isinstance(handle, File.UndoHandle):
+        if isinstance(handle, UndoHandle):
             uhandle = handle
         else:
-            uhandle = File.UndoHandle(handle)
+            uhandle = UndoHandle(handle)
 
         # Try to fast-forward to the beginning of the blast report.
         read_and_call_until(uhandle, consumer.noevent, contains="BLAST")
@@ -1742,7 +1742,7 @@ class Iterator(object):
             raise ValueError(
                 "I expected a file handle or file-like object, got %s" % type(handle)
             )
-        self._uhandle = File.UndoHandle(handle)
+        self._uhandle = UndoHandle(handle)
         self._parser = parser
         self._header = []
 
