@@ -101,11 +101,7 @@ gzip
 Notice that the open function has been replaced. You can "fix" this if you
 need to by importing the built-in open function:
 
->>> try:
-...     from __builtin__ import open # Python 2
-... except ImportError:
-...     from builtins import open # Python 3
-...
+>>> from builtins import open
 
 However, what we recommend instead is to use the explicit namespace, e.g.
 
@@ -220,7 +216,6 @@ NC_000932.1
 
 """
 
-from __future__ import print_function
 
 import sys
 import zlib
@@ -329,11 +324,7 @@ def BgzfBlocks(handle):
     decompressed length of the blocks contents (limited to 65536 in
     BGZF), as an iterator - one tuple per BGZF block.
 
-    >>> try:
-    ...     from __builtin__ import open # Python 2
-    ... except ImportError:
-    ...     from builtins import open # Python 3
-    ...
+    >>> from builtins import open
     >>> handle = open("SamBam/ex1.bam", "rb")
     >>> for values in BgzfBlocks(handle):
     ...     print("Raw start %i, raw length %i; data start %i, data length %i" % values)
@@ -466,11 +457,7 @@ class BgzfReader(object):
     Let's use the BgzfBlocks function to have a peak at the BGZF blocks
     in an example BAM file,
 
-    >>> try:
-    ...     from __builtin__ import open # Python 2
-    ... except ImportError:
-    ...     from builtins import open # Python 3
-    ...
+    >>> from builtins import open
     >>> handle = open("SamBam/ex1.bam", "rb")
     >>> for values in BgzfBlocks(handle):
     ...     print("Raw start %i, raw length %i; data start %i, data length %i" % values)

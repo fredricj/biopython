@@ -18,12 +18,7 @@ Functions:
 
 """
 
-from __future__ import print_function
-
-try:
-    import xml.etree.cElementTree as ElementTree
-except ImportError:
-    import xml.etree.ElementTree as ElementTree
+from xml.etree import ElementTree
 
 from Bio._py3k import StringIO
 

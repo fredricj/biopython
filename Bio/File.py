@@ -12,7 +12,6 @@ indexing files. These are not intended for direct use.
 """
 
 
-
 import codecs
 import os
 import sys

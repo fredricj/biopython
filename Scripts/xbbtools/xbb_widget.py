@@ -11,20 +11,13 @@
 
 """Widget code for graphical Xbbtools tool."""
 
-from __future__ import print_function
 
 import re
 import sys
 import time
-
-try:  # Python 2
-    import Tkinter as tk
-    import ttk
-    import tkFileDialog as filedialog
-except ImportError:  # Python 3
-    import tkinter as tk
-    import tkinter.ttk as ttk
-    from tkinter import filedialog
+import tkinter as tk
+import tkinter.ttk as ttk
+from tkinter import filedialog
 
 from Bio.Data import CodonTable
 from Bio.SeqIO.FastaIO import SimpleFastaParser

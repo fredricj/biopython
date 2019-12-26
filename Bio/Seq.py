@@ -19,20 +19,13 @@ See also the Seq_ wiki and the chapter in our tutorial:
 .. _`PDF Tutorial`: http://biopython.org/DIST/docs/tutorial/Tutorial.pdf
 
 """
-from __future__ import print_function
 
 import string  # for maketrans only
 import array
 import sys
 import warnings
 import collections
-
-try:
-    # Python 3
-    from collections.abc import Iterable as _Iterable
-except ImportError:
-    # Python 2.7
-    from collections import Iterable as _Iterable
+from collections.abc import Iterable as _Iterable
 
 from Bio._py3k import range
 from Bio._py3k import basestring

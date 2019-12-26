@@ -27,7 +27,6 @@ Feature Table Documentation:
 # for more details of this format, and an example.
 # Added by Ying Huang & Iddo Friedberg
 
-from __future__ import print_function
 
 import warnings
 import re
@@ -1867,7 +1866,7 @@ class GenBankScanner(InsdcScanner):
                         consumer.origin_name(line)
                 if line.startswith("TSA "):
                     line = line[3:].strip()
-                    consumer.tgs(line)
+                    consumer.tsa(line)
                 if line.startswith("WGS "):
                     line = line[3:].strip()
                     consumer.wgs(line)

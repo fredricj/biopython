@@ -7,8 +7,6 @@
 
 """Class that maps (chain_id, residue_id) to a residue property."""
 
-from __future__ import print_function
-
 
 class AbstractPropertyMap(object):
     """Define base class, map holder of residue properties."""

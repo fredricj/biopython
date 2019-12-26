@@ -5,9 +5,6 @@
 # package.
 """Methods for codon usage calculations."""
 
-
-from __future__ import print_function
-
 import math
 from .CodonUsageIndices import SharpEcoliIndex
 from Bio import SeqIO  # To parse a FASTA file
