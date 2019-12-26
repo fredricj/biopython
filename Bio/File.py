@@ -20,6 +20,9 @@ import contextlib
 import itertools
 import platform
 
+
+import warnings
+from Bio import BiopythonDeprecationWarning
 from Bio._py3k import basestring
 
 try:
@@ -48,10 +51,6 @@ except ImportError:
     # Still want to offer in-memory indexing.
     _sqlite = None
     pass
-
-
-import warnings
-from Bio import BiopythonDeprecationWarning
 
 
 @contextlib.contextmanager
