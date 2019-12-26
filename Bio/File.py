@@ -11,7 +11,7 @@ Bio.File defines private classes used in Bio.SeqIO and Bio.SearchIO for
 indexing files. These are not intended for direct use.
 """
 
-from __future__ import print_function
+
 
 import codecs
 import os
@@ -50,6 +50,10 @@ except ImportError:
     pass
 
 
+import warnings
+from Bio import BiopythonDeprecationWarning
+
+
 @contextlib.contextmanager
 def as_handle(handleish, mode="r", **kwargs):
     r"""Context manager to ensure we are using a handle.
@@ -76,17 +80,17 @@ def as_handle(handleish, mode="r", **kwargs):
     >>> from Bio import File
     >>> import os
     >>> with File.as_handle('seqs.fasta', 'w') as fp:
-    ...     # Python2/3 docstring workaround, revise for 'Python 3 only'.
-    ...     _ = fp.write('>test\nACGT')
+    ...     fp.write('>test\nACGT')
     ...
+    10
     >>> fp.closed
     True
 
     >>> handle = open('seqs.fasta', 'w')
     >>> with File.as_handle(handle) as fp:
-    ...     # Python 2/3 docstring workaround, revise for 'Python 3 only'.
-    ...     _ = fp.write('>test\nACGT')
+    ...     fp.write('>test\nACGT')
     ...
+    10
     >>> fp.closed
     False
     >>> fp.close()
@@ -145,6 +149,25 @@ def _open_for_random_access(filename):
                              "please use BGZF (blocked gzip format) instead.")
 
     return handle
+
+
+class UndoHandle(object):
+    """A Python handle that adds functionality for saving lines (DEPRECATED).
+
+    Saves lines in a LIFO fashion.
+
+    Added methods:
+     - saveline    Save a line to be returned next time.
+     - peekline    Peek at the next line without consuming it.
+
+    """
+
+    def __init__(self, handle):
+        """Initialize the class."""
+        warnings.warn("The UndoHandle class has been deprecated, and was "
+                      "moved to Bio/SearchIO/_legacy/ParserSupport.py "
+                      "(which is the only module in Biopython still using "
+                      "UndoHandle.")
 
 
 # The rest of this file defines code used in Bio.SeqIO and Bio.SearchIO
